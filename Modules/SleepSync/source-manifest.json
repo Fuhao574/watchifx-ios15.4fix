@@ -1,0 +1,90 @@
+{
+  "Runtime/Focus/FrozenFocus.xm": {
+    "source": "WatchFix-research/research/focus-sleep-once3/FrozenFocus.xm",
+    "source_sha256": "7d6d1d8a7167745b166f80df4f86b4a94aa4ddca39e10420df3f88c9b3674abe",
+    "sha256": "882defc1e260566ce1a96c733c041ebfeebd96817f735352813197b516f96b28"
+  },
+  "Runtime/Focus/FrozenConverter.xm": {
+    "source": "WatchFix-research/research/focus-sleep-once3/FrozenConverter.xm",
+    "source_sha256": "504921bd50c3efa8be9ef373f4467ad3c8a78c7f1c8e6c431ed679cc0da80fd2",
+    "sha256": "504921bd50c3efa8be9ef373f4467ad3c8a78c7f1c8e6c431ed679cc0da80fd2"
+  },
+  "Runtime/Focus/FocusWireConverter.h": {
+    "source": "WatchFix-research/research/focus-sleep-once3/FocusWireConverter.h",
+    "source_sha256": "0176c1a51515399d915b27eb71576c498be8a15834a4872636cd56445306aa18",
+    "sha256": "0176c1a51515399d915b27eb71576c498be8a15834a4872636cd56445306aa18"
+  },
+  "Runtime/Focus/SleepReturnObservation.h": {
+    "source": "WatchFix-research/research/focus-sleep-once3/SleepReturnObservation.h",
+    "source_sha256": "5b0422b95d6d58285d9b28094b9f9d22990ae463c2824ea028375687a33e2e79",
+    "sha256": "5b0422b95d6d58285d9b28094b9f9d22990ae463c2824ea028375687a33e2e79"
+  },
+  "Runtime/Focus/TrialPermit.h": {
+    "source": "WatchFix-research/research/focus-sleep-once3/TrialPermit.h",
+    "source_sha256": "3c8efd78d8efb7c7b0c95c8536f7826a40f3e0495bf1e3bd1fe52399db7ff75c",
+    "sha256": "6e06b9f0b235da331c0a6ff6b088dbe44bee5ded8a89e1ae3b9761589a57aee0"
+  },
+  "Runtime/Focus/BoundedLog.h": {
+    "source": "WatchFix-research/research/focus-sleep-once3/BoundedLog.h",
+    "source_sha256": "6911362f5f030f401bc37544ef92c9687932078f654c8e01f8f83b0f7a36a686",
+    "sha256": "6911362f5f030f401bc37544ef92c9687932078f654c8e01f8f83b0f7a36a686"
+  },
+  "Runtime/Focus/PreflightSupport.mm": {
+    "source": "WatchFix-research/research/focus-sleep-once3/PreflightSupport.mm",
+    "source_sha256": "2b1acce057413d938f85efe7bcb09a40a1c5c241e800ae8b1a3e366701f2a8aa",
+    "sha256": "6e33c0ba67084666ad414f6945b794ac853ed90663bd35512ccd8f115f5f38ec"
+  },
+  "Runtime/Focus/Makefile": {
+    "source": "WatchFix-research/research/focus-sleep-once3/Makefile",
+    "source_sha256": "6cd07d03325c5a3c1eca88ca5b91c16cca47b6f53d647cc85991da53c8d88227",
+    "sha256": "135f7488adc1c4f8ea065ed904f8e87fde3291833a6a50b0bbeaca5f0f61c228"
+  },
+  "Runtime/Focus/WatchFix_FocusConfigCompatibility.plist": {
+    "source": "WatchFix-research/research/focus-sleep-once3/WatchFix_FocusConfigCompatibility.plist",
+    "source_sha256": "fd7107bf528e733496477e2a15fe0b812b96dec72886384efba6e690daaad923",
+    "sha256": "6e8bf13930572e03d3a037662839be454e78de32068b9fd00d3eb2766c400576"
+  },
+  "Runtime/Focus/ModuleSession.h": {
+    "source": "WatchFix-research/Modules/SleepSync/ModuleSession.h",
+    "sha256": "0d14e25474989ed53a31673f80f822acf99c048fff9fa35bd9137e8fb85f9a9d"
+  },
+  "Runtime/Identity/Observer.mm": {
+    "source": "WatchFix-research/research/hello-identity-wireless1/Observer.mm",
+    "source_sha256": "2fabb9166c74929b76495d9f81d4d9c51077512fcaf762c5277cfe832e48f2a4",
+    "sha256": "0ccd94032a8d58d88863e4b530f88090a12664e1b733ba56d37f47664ce6cc67"
+  },
+  "Runtime/Identity/NeutralCopy.h": {
+    "source": "WatchFix-research/research/hello-identity-wireless1/NeutralCopy.h",
+    "source_sha256": "f8df3578495c28801031c191c0aec8c7efbeb94f48ace86716bd046189e5b67a",
+    "sha256": "f8df3578495c28801031c191c0aec8c7efbeb94f48ace86716bd046189e5b67a"
+  },
+  "Runtime/Identity/ExecutableGate.h": {
+    "source": "WatchFix-research/research/hello-identity-wireless1/ExecutableGate.h",
+    "source_sha256": "d0f1d5b9d505000c2055e1cbbe86fe5b0e2d9fc8b0de1cbb0f11e972ce1800ad",
+    "sha256": "d0f1d5b9d505000c2055e1cbbe86fe5b0e2d9fc8b0de1cbb0f11e972ce1800ad"
+  },
+  "Runtime/Identity/IdentityLog.h": {
+    "source": "WatchFix-research/research/hello-identity-wireless1/IdentityLog.h",
+    "source_sha256": "32d524f39ddf0e1b3ccb14c9b6a67bdcbb2af6297db5671885f67e7fef7f2d7b",
+    "sha256": "32d524f39ddf0e1b3ccb14c9b6a67bdcbb2af6297db5671885f67e7fef7f2d7b"
+  },
+  "Runtime/Identity/BoundedLog.h": {
+    "source": "WatchFix-research/research/hello-identity-wireless1/BoundedLog.h",
+    "source_sha256": "6911362f5f030f401bc37544ef92c9687932078f654c8e01f8f83b0f7a36a686",
+    "sha256": "6911362f5f030f401bc37544ef92c9687932078f654c8e01f8f83b0f7a36a686"
+  },
+  "Runtime/Identity/Makefile": {
+    "source": "WatchFix-research/research/hello-identity-wireless1/Makefile",
+    "source_sha256": "a035eb248666690bdf14ee55bb83b7e18464b95260bf34a040ef7c6a6bdd629e",
+    "sha256": "a035eb248666690bdf14ee55bb83b7e18464b95260bf34a040ef7c6a6bdd629e"
+  },
+  "Runtime/Identity/WatchFix_HelloReadOnlyObserver.plist": {
+    "source": "WatchFix-research/research/hello-identity-wireless1/WatchFix_HelloReadOnlyObserver.plist",
+    "source_sha256": "7a0735ef9b15554e41a7ec835567795bbf18c4f5716551ddd1a837ab5856b790",
+    "sha256": "7a0735ef9b15554e41a7ec835567795bbf18c4f5716551ddd1a837ab5856b790"
+  },
+  "Runtime/Identity/ModuleSession.h": {
+    "source": "WatchFix-research/Modules/SleepSync/ModuleSession.h",
+    "sha256": "0d14e25474989ed53a31673f80f822acf99c048fff9fa35bd9137e8fb85f9a9d"
+  }
+}

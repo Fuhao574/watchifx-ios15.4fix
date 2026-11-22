@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>WFPluginManifest</key>
+	<dict>
+		<key>WFPluginConfigurationClass</key>
+		<string>FocusConfigCompatibilityPluginConfiguration</string>
+		<key>WFPluginDetail</key>
+		<string>plugin.FocusConfigCompatibility.detail</string>
+		<key>WFPluginHasInstallableContent</key>
+		<true/>
+		<key>WFPluginInjectionTargets</key>
+		<dict>
+			<key>Bundles</key>
+			<array/>
+			<key>Executables</key>
+			<array>
+				<string>donotdisturbd</string>
+			</array>
+		</dict>
+		<key>WFPluginMinimumSystemVersion</key>
+		<integer>984064</integer>
+		<key>WFPluginMaximumSystemVersion</key>
+		<integer>984064</integer>
+		<key>WFPluginMinimumWatchOSVersion</key>
+		<integer>720896</integer>
+		<key>WFPluginNanoCapabilities</key>
+		<array/>
+		<key>WFPluginRestartExecutables</key>
+		<array>
+			<string>donotdisturbd</string>
+		</array>
+		<key>WFPluginScopeIdentifier</key>
+		<string>com.apple.Bridge</string>
+		<key>WFPluginTitle</key>
+		<string>plugin.FocusConfigCompatibility.title</string>
+	</dict>
+</dict>
+</plist>
