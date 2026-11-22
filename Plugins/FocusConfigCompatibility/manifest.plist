@@ -9,7 +9,7 @@
 		<key>WFPluginDetail</key>
 		<string>plugin.FocusConfigCompatibility.detail</string>
 		<key>WFPluginHasInstallableContent</key>
-		<true/>
+		<false/>
 		<key>WFPluginInjectionTargets</key>
 		<dict>
 			<key>Bundles</key>
@@ -28,9 +28,7 @@
 		<key>WFPluginNanoCapabilities</key>
 		<array/>
 		<key>WFPluginRestartExecutables</key>
-		<array>
-			<string>donotdisturbd</string>
-		</array>
+		<array/>
 		<key>WFPluginScopeIdentifier</key>
 		<string>com.apple.Bridge</string>
 		<key>WFPluginTitle</key>

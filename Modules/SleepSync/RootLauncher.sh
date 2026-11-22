@@ -43,7 +43,7 @@ fi
 # The root-consumed plist is generated in a ROOT-owned directory, never copied
 # from the mobile session's request or allowed to override ProgramArguments.
 if [ -e "$job" ] || [ -L "$job" ]; then
- test -f "$job" && test ! -L "$job" && test "$(stat -f %u:%l "$job")" = 0:1
+ test -f "$job" && test ! -L "$job" && test "$(stat -f %u:%l "$job")" = 0:1 || exit 78
 else
  temporary="$jobs/.$label.new"
  test ! -e "$temporary" && test ! -L "$temporary"

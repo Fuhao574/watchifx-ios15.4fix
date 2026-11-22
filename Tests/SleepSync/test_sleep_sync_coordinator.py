@@ -5,7 +5,7 @@ Production has NO test-root environment override. Only a reviewed copy under rep
 has its fixed paths and baseline digests translated to fixture files. Every external
 command is redirected to a fixture-local client and persistent Python dispatcher;
 shell builtins execute in /bin/sh on the host. No device command is executed.
-Run: python3 diagnostics/focus-bug/test_sleep_sync_coordinator.py
+Run from repo: python3 Tests/SleepSync/test_sleep_sync_coordinator.py
 """
 import hashlib
 import io
@@ -80,8 +80,10 @@ try:
     if name == "id": print(0)
     elif name == "stat":
         p = pathlib.Path(a[-1]); st = p.lstat(); fmt = a[1]
-        mobile = p in (session, session / "identity", session / "focus")
+        mobile = p in (session, session / "identity", session / "focus",
+                       session / "start-unix", session / "deadline-unix")
         uid = 501 if mobile else 0
+        uid = s.get("owners", {}).get(str(p.relative_to(root)), uid)
         values = {"%u": str(uid), "%l": str(st.st_nlink), "%Lp": oct(stat.S_IMODE(st.st_mode))[2:],
                   "%u:%Lp": "%s:%o" % (uid, stat.S_IMODE(st.st_mode)),
                   "%d:%i": "%s:%s" % (st.st_dev, st.st_ino), "%z": str(st.st_size)}
@@ -253,9 +255,16 @@ class WorkerFixture:
             (self.runtime / n).write_bytes(("candidate-" + n).encode())
         self.manifest = self.runtime / "payload.sha256"
         self.manifest.write_text("".join(hashlib.sha256((self.runtime / n).read_bytes()).hexdigest() + "  " + n + "\n" for n in NAMES))
+        self.postload_manifest = self.runtime / "postload.sha256"
+        self.postload_manifest.write_bytes(self.manifest.read_bytes())
         initial = dict(uuid=UUID, now=1800000000, identity_pid=100, focus_pid=200, restarts=[])
         initial.update(state)
         self.set_state(initial)
+        for name, value in (("start-unix", initial["now"]),
+                            ("deadline-unix", initial["now"] + 420)):
+            path = self.session / name
+            path.write_text(str(value) + "\n")
+            path.chmod(0o600)
         tools = self.root / "tools"
         tools.mkdir()
         stub = tools / "dispatcher"
@@ -402,7 +411,11 @@ class CoordinatorTests(unittest.TestCase):
         self.assertNotRegex(s, r"(?m)^\s*(?:eval|source|\.\s|rm\s|ssh\s|scp\s|sudo\s)")
         for forbidden in ("hello-identity-shadow.plist", "sqlite3", "WF_SLEEP_SYNC_TEST_ROOT", "launchctl reboot"):
             self.assertNotIn(forbidden, s)
-        self.assertIn('deadline=$((started + 420))', s)
+        self.assertNotIn('deadline=$((started + 420))', s)
+        self.assertNotIn('$work/started-unix', s)
+        self.assertIn('"$session/start-unix"', s)
+        self.assertIn('"$session/deadline-unix"', s)
+        self.assertIn('"$((bridge_deadline - bridge_start))" -le 420', s)
         self.assertIn('"$ticks" -lt 180', s)
         self.assertIn('"$((wall - source_at))" -lt 90', s)
         self.assertIn('"$log_size" -le 32768', s)
@@ -425,6 +438,12 @@ class CoordinatorTests(unittest.TestCase):
 
     def test_success_is_protocol_only_with_exact_restart_budget(self):
         f = self.fixture()
+        # Both trusted owners are accepted; an EOF-terminated decimal is canonical
+        # too. The other fixture tests exercise mobile-owned LF-terminated files.
+        (f.session / "start-unix").write_text("1800000000")
+        state = f.state
+        state["owners"] = {str((f.session / "start-unix").relative_to(f.root)): 0}
+        f.set_state(state)
         p = f.run()
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertEqual(f.status["phase"], "finished")
@@ -444,14 +463,113 @@ class CoordinatorTests(unittest.TestCase):
         f = self.fixture()
         f.run()
         before = f.state["restarts"][:]
+        timing = (f.status["startedAt"], f.status["deadlineUnix"])
+        state = f.state
+        state["now"] += 900
+        f.set_state(state)
         f.run()
         self.assertEqual(f.state["restarts"], before)
         self.assertEqual(f.status["phase"], "failed")
         self.assertTrue(f.status["cleanupVerified"])
+        self.assertEqual((f.status["startedAt"], f.status["deadlineUnix"]), timing)
+        self.assert_restored(f)
+
+    def test_delayed_worker_uses_bridge_deadline_without_activation(self):
+        f = self.fixture()
+        # The selector may give less than 420 seconds; even start+420 would be
+        # wrong here, not just recomputing worker-entry+420.
+        (f.session / "deadline-unix").write_text("1800000120\n")
+        state = f.state
+        state["now"] += 121
+        f.set_state(state)
+        before = {n: (f.target / n).stat().st_ino for n in NAMES}
+        p = f.run()
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(f.state["restarts"], [])
+        self.assertEqual(f.status["phase"], "failed")
+        self.assertEqual(f.status["messageCode"], "deadlineExceeded")
+        self.assertEqual(f.status["startedAt"], 1800000000)
+        self.assertEqual(f.status["deadlineUnix"], 1800000120)
+        self.assertTrue(f.status["cleanupVerified"])
+        self.assertFalse(f.status["ackMatched"])
+        self.assertEqual(f.status["sends"], 0)
+        self.assertNotIn("launchctl", f.command_counts)
+        self.assertNotIn("cp", f.command_counts)
+        self.assertFalse((f.session / "worker-entered/backup").exists())
+        self.assertEqual({n: (f.target / n).stat().st_ino for n in NAMES}, before)
+        self.assert_restored(f)
+
+    def test_bad_bridge_times_never_activate_or_change_baseline(self):
+        for kind in ("missing-start", "missing-deadline", "zero", "leading-zero",
+                     "expression", "extra-line", "nul", "overlong", "reversed",
+                     "over-budget", "mode", "owner", "symlink", "hardlink"):
+            with self.subTest(kind=kind):
+                f = self.fixture()
+                path = f.session / "deadline-unix"
+                if kind == "missing-start": (f.session / "start-unix").unlink()
+                elif kind == "missing-deadline": path.unlink()
+                elif kind == "zero": path.write_text("0\n")
+                elif kind == "leading-zero": path.write_text("01800000420\n")
+                elif kind == "expression": path.write_text("1800000000+420")
+                elif kind == "extra-line": path.write_text("1800000420\n\n")
+                elif kind == "nul": path.write_bytes(b"1800000420\0\n")
+                elif kind == "overlong": path.write_text("1" * 17)
+                elif kind == "reversed": path.write_text("1800000000\n")
+                elif kind == "over-budget": path.write_text("1800000421\n")
+                elif kind == "mode": path.chmod(0o644)
+                elif kind == "owner":
+                    state = f.state
+                    state["owners"] = {str(path.relative_to(f.root)): 502}
+                    f.set_state(state)
+                else:
+                    original = f.session / "number-source"
+                    path.rename(original)
+                    if kind == "symlink": path.symlink_to(original)
+                    else: os.link(original, path)
+                before = {n: (f.target / n).stat().st_ino for n in NAMES}
+                p = f.run()
+                self.assertEqual(p.returncode, 0, p.stderr)
+                self.assertEqual(f.state["restarts"], [])
+                self.assertEqual(f.status["phase"], "failed")
+                self.assertEqual(f.status["startedAt"], 0)
+                self.assertEqual(f.status["deadlineUnix"], 0)
+                self.assertTrue(f.status["cleanupVerified"])
+                self.assertFalse(f.status["ackMatched"])
+                self.assertNotIn("cp", f.command_counts)
+                self.assertEqual({n: (f.target / n).stat().st_ino for n in NAMES}, before)
+                self.assert_restored(f)
+
+    def test_bad_times_do_not_block_dirty_recovery(self):
+        f = self.fixture()
+        work = f.session / "worker-entered"
+        (work / "identity-dirty").mkdir(parents=True, mode=0o700)
+        work.chmod(0o700)
+        (work / "backup").mkdir(mode=0o700)
+        for name in NAMES:
+            (work / "backup" / name).write_bytes(f.originals[name])
+        for name in NAMES[:2]:
+            (f.target / name).write_bytes((f.runtime / name).read_bytes())
+        (f.session / "start-unix").write_text("broken\n")
+        (f.session / "deadline-unix").unlink()
+        state = f.state
+        state["now"] += 900
+        f.set_state(state)
+        p = f.run()
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(f.status["phase"], "failed")
+        self.assertEqual(f.status["startedAt"], 0)
+        self.assertEqual(f.status["deadlineUnix"], 0)
+        self.assertTrue(f.status["cleanupVerified"])
+        self.assertFalse(f.status["ackMatched"])
+        self.assertEqual(f.state["restarts"], ["com.apple.identityservicesd"])
+        self.assertTrue((work / "identity-original-done").is_dir())
+        self.assertFalse((work / "identity-baseline-reserved").exists())
         self.assert_restored(f)
 
     def test_all_payloads_validated_before_any_install(self):
-        for kind in ("hash", "manifest-code", "unknown-name", "duplicate", "symlink", "baseline"):
+        for kind in ("hash", "manifest-code", "unknown-name", "duplicate", "symlink", "baseline",
+                     "postload-missing", "postload-incomplete", "postload-unknown",
+                     "postload-duplicate", "postload-code", "postload-trailing"):
             with self.subTest(kind=kind):
                 f = self.fixture()
                 if kind == "hash": (f.runtime / NAMES[-1]).write_bytes(b"tampered")
@@ -461,6 +579,16 @@ class CoordinatorTests(unittest.TestCase):
                 elif kind == "symlink":
                     (f.runtime / NAMES[-1]).unlink()
                     (f.runtime / NAMES[-1]).symlink_to(f.target / NAMES[-1])
+                elif kind == "postload-missing": f.postload_manifest.unlink()
+                elif kind == "postload-incomplete":
+                    f.postload_manifest.write_text("".join(f.postload_manifest.read_text().splitlines(keepends=True)[:2]))
+                elif kind == "postload-unknown":
+                    f.postload_manifest.write_text(f.postload_manifest.read_text().replace(NAMES[-1], "../../bad"))
+                elif kind == "postload-duplicate":
+                    f.postload_manifest.write_text(f.postload_manifest.read_text().replace(NAMES[-1], NAMES[0]))
+                elif kind == "postload-code": f.postload_manifest.write_text("$(touch SENTINEL) payload\n")
+                elif kind == "postload-trailing":
+                    f.postload_manifest.write_text(f.postload_manifest.read_text() + "unterminated-extra")
                 else: (f.target / NAMES[-1]).write_bytes(b"unexpected baseline")
                 p = f.run()
                 self.assertEqual(p.returncode, 0, p.stderr)
@@ -520,9 +648,12 @@ class CoordinatorTests(unittest.TestCase):
     def test_recovery_request_before_first_entry_never_activates(self):
         f = self.fixture()
         (f.session / "recovery-requested").write_text("recover")
+        (f.session / "deadline-unix").write_text("broken\n")
         f.run()
         self.assertEqual(f.status["phase"], "failed")
         self.assertTrue(f.status["cleanupVerified"])
+        self.assertEqual(f.status["startedAt"], 0)
+        self.assertEqual(f.status["deadlineUnix"], 0)
         self.assertEqual(f.state["restarts"], [])
         self.assert_restored(f)
 
@@ -540,6 +671,27 @@ class CoordinatorTests(unittest.TestCase):
         self.assertFalse(f.status["cleanupVerified"])
         self.assertEqual((f.target / NAMES[0]).read_bytes(), b"unreviewed-postload-or-external-change")
         self.assertEqual(f.state["restarts"], [])
+
+    def test_exact_postload_hash_allows_original_restore(self):
+        f = self.fixture()
+        work = f.session / "worker-entered"
+        (work / "identity-dirty").mkdir(parents=True, mode=0o700)
+        work.chmod(0o700)
+        (work / "backup").mkdir(mode=0o700)
+        for name in NAMES:
+            (work / "backup" / name).write_bytes(f.originals[name])
+        transformed = b"audited-postload-transformed-identity"
+        (f.target / NAMES[0]).write_bytes(transformed)
+        prehash = hashlib.sha256((f.runtime / NAMES[0]).read_bytes()).hexdigest()
+        posthash = hashlib.sha256(transformed).hexdigest()
+        f.postload_manifest.write_text(f.postload_manifest.read_text().replace(prehash, posthash))
+        p = f.run()
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(f.status["phase"], "failed")
+        self.assertTrue(f.status["cleanupVerified"])
+        self.assertEqual(f.state["restarts"], ["com.apple.identityservicesd"])
+        self.assertFalse((work / "identity-baseline-reserved").exists())
+        self.assert_restored(f)
 
     def test_rejects_unsafe_paths_uuid_and_linked_status(self):
         f = self.fixture()

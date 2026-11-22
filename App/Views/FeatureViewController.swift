@@ -32,8 +32,8 @@ final class FeatureViewController: WFScrollStackViewController {
                 return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
             }
         let knownFixCount = installedPlugins.count + unavailablePlugins.count
-        let installedPluginIDs = installedPlugins.map(\.id)
-        let installablePluginIDs = unavailablePlugins.filter(\.canInstall).map(\.id)
+        let installedPluginIDs = installedPlugins.filter(\.metadata.hasInstallableContent).map(\.id)
+        let installablePluginIDs = unavailablePlugins.filter { $0.canInstall && $0.metadata.hasInstallableContent }.map(\.id)
         let installedToolIDs = toolPlugins.filter(\.available).map(\.id)
         let installableToolIDs = toolPlugins.filter { !$0.available && $0.canInstall }.map(\.id)
 
@@ -159,24 +159,24 @@ final class FeatureViewController: WFScrollStackViewController {
     private func makePluginCard(for plugin: PluginState) -> UIView {
         let isSleepSync = plugin.id == "FocusConfigCompatibility"
         let hasConfiguration = isSleepSync || plugin.metadata.hasConfigurationInterface
-        let onConfiguration: (() -> Void)? = hasConfiguration
+        let onConfiguration: (() -> Void)? = hasConfiguration && !isSleepSync
             ? { [weak self] in
                 self?.openPluginConfiguration(for: plugin)
             }
             : nil
 
-        let isUpdate = plugin.available && plugin.needsUpdate
+        let isUpdate = plugin.available && plugin.needsUpdate && !isSleepSync
 
         return WFMakePluginCard(
             plugin: plugin,
             isBusy: store.isPluginBusy(plugin.id),
-            actionTitle: isUpdate ? L("common.update") : nil,
-            systemImage: isUpdate ? "arrow.triangle.2.circlepath" : nil,
-            isPrimary: isUpdate ? true : nil,
+            actionTitle: isSleepSync ? L("sleepSync.module.open") : (isUpdate ? L("common.update") : nil),
+            systemImage: isSleepSync ? "moon.zzz" : (isUpdate ? "arrow.triangle.2.circlepath" : nil),
+            isPrimary: isSleepSync || isUpdate ? true : nil,
             tintColor: isUpdate ? .systemBlue : nil,
             configurationTitle: isSleepSync ? L("sleepSync.module.open") : L("features.plugins.configure"),
             configurationSystemImage: isSleepSync ? "arrow.triangle.2.circlepath" : "slider.horizontal.3",
-            isConfigurationEnabled: hasConfiguration,
+            isConfigurationEnabled: hasConfiguration && !isSleepSync,
             onConfiguration: onConfiguration
         ) { [weak self] in
             self?.performPluginAction(for: plugin)
@@ -184,6 +184,12 @@ final class FeatureViewController: WFScrollStackViewController {
     }
 
     private func performPluginAction(for plugin: PluginState) {
+        if plugin.id == "FocusConfigCompatibility" {
+            // This is a manual operation module. Installing the old permanent
+            // research dylib would replace the very baseline restored by it.
+            openPluginConfiguration(for: plugin)
+            return
+        }
         if plugin.available && !plugin.needsUpdate {
             store.removePlugin(identifier: plugin.id)
         } else {

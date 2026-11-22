@@ -55,6 +55,14 @@ static BOOL SSWrite(NSString *path,NSDictionary *value,mode_t mode,NSError **err
     int parent=open(path.stringByDeletingLastPathComponent.fileSystemRepresentation,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
     if(parent<0)return NO;ok=fsync(parent)==0;close(parent);return ok;
 }
+static BOOL SSWriteTime(NSString *path,long long value,NSError **error) {
+    NSData *bytes=[[NSString stringWithFormat:@"%lld\n",value] dataUsingEncoding:NSASCIIStringEncoding];
+    int fd=open(path.fileSystemRepresentation,O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);
+    if(fd<0)return SSErr(error,18,@"无法固定本次同步的截止时间。");
+    BOOL ok=write(fd,bytes.bytes,bytes.length)==(ssize_t)bytes.length&&fsync(fd)==0;
+    if(close(fd))ok=NO;
+    return ok?YES:SSErr(error,19,@"本次同步时间记录未完成，已停止。");
+}
 static NSString *SSCurrentID(void) {
     id value=SSRead([SSPath(WFSSRoot) stringByAppendingPathComponent:@"current-session.plist"])[@"sessionID"];
     if(![value isKindOfClass:[NSString class]])return nil;
@@ -71,15 +79,17 @@ static BOOL SSBackendAvailable(void) {
     NSString *root=SSPath(WFSSRuntime);NSDictionary *manifest=SSRead([root stringByAppendingPathComponent:@"module-info.plist"]);
     // Build/audit must explicitly approve runtime packaging; absence is not success.
     if(![manifest[@"schema"] isEqual:@1]||![manifest[@"enabledForDevice"] isEqual:@YES])return NO;
-    for(NSString *file in @[@"RootLauncher.sh",@"SleepSyncCoordinator.sh",@"WatchFix_FocusConfigCompatibility.dylib",@"WatchFix_FocusConfigCompatibility.plist",@"WatchFix_HelloReadOnlyObserver.dylib",@"WatchFix_HelloReadOnlyObserver.plist",@"payload.sha256"]){
+    NSString *brand=[NSString stringWithFormat:@"%016llX",jbrand()];
+    if(![manifest[@"brandHex"] isEqual:brand])return NO;
+    for(NSString *file in @[@"RootLauncher.sh",@"SleepSyncCoordinator.sh",@"WatchFix_FocusConfigCompatibility.dylib",@"WatchFix_FocusConfigCompatibility.plist",@"WatchFix_HelloReadOnlyObserver.dylib",@"WatchFix_HelloReadOnlyObserver.plist",@"payload.sha256",@"postload.sha256"]){
         struct stat s;if(lstat([[root stringByAppendingPathComponent:file] fileSystemRepresentation],&s)||!S_ISREG(s.st_mode)||s.st_nlink!=1)return NO;
     }
     return NSProcessInfo.processInfo.operatingSystemVersion.majorVersion==15&&
         NSProcessInfo.processInfo.operatingSystemVersion.minorVersion==4&&NSProcessInfo.processInfo.operatingSystemVersion.patchVersion==0;
 }
 static BOOL SSRunLauncher(NSString *operation,NSString *identifier,NSError **error) {
-    // Fixed launchctl program and internally generated arguments only. No shell
-    // strings, user-supplied path, PID or service label enter this interface.
+    // Fixed bundled launcher via /bin/sh with internally generated arguments.
+    // No user-supplied command string, path, PID or service label is accepted.
     posix_spawnattr_t attrs;int rc=posix_spawnattr_init(&attrs);if(rc)return SSErr(error,7,@"无法初始化恢复服务。");
     rc=posix_spawnattr_set_persona_np(&attrs,99,1);
     if(!rc)rc=posix_spawnattr_set_persona_uid_np(&attrs,0);
@@ -120,7 +130,11 @@ static NSDictionary *SSIdle(BOOL available) {return @{@"phase":available?@"idle"
             if(mkdir(directory.fileSystemRepresentation,0700))return SSErr(error,13,@"无法新建独立会话。");
             for(NSString *child in @[@"focus",@"identity",@"backup"])if(!SSSafeDirectory([directory stringByAppendingPathComponent:child],error))return NO;
             char boot[128]={};size_t n=sizeof(boot);if(sysctlbyname("kern.bootsessionuuid",boot,&n,NULL,0)||!n||n>sizeof(boot)||boot[n-1])return SSErr(error,14,@"无法读取当前启动标识。");
-            double now=NSDate.date.timeIntervalSince1970;
+            // One original deadline is shared by App, runtime and worker; a
+            // delayed worker or recovery must never get a fresh seven minutes.
+            double now=floor(NSDate.date.timeIntervalSince1970);
+            if(!SSWriteTime([directory stringByAppendingPathComponent:@"start-unix"],(long long)now,error)||
+               !SSWriteTime([directory stringByAppendingPathComponent:@"deadline-unix"],(long long)now+420,error))return NO;
             NSDictionary *selector=@{@"schema":@1,@"sessionID":identifier,@"bootUUID":[[NSString stringWithUTF8String:boot] uppercaseString],@"startedAt":@(now),@"deadline":@(now+420)};
             NSMutableDictionary *status=[SSIdle(YES) mutableCopy];[status addEntriesFromDictionary:@{@"sessionID":identifier,@"phase":@"preparing",@"messageCode":@"preparing",@"startedAt":@(now),@"deadline":@(now+420),@"cleanupVerified":@NO}];
             if(!SSWrite([directory stringByAppendingPathComponent:@"status.plist"],status,0600,error)||!SSWrite([SSPath(WFSSRoot) stringByAppendingPathComponent:@"current-session.plist"],selector,0600,error))return NO;

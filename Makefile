@@ -16,7 +16,9 @@ THEOS_DEVICE_PORT ?= 22
 
 SUBPROJECTS = App Preferences $(patsubst %/Makefile,%,$(wildcard Plugins/*/Makefile))
 
-# Opt-in local integration build only until the new coordinator is accepted.
+# Include the module in normal source builds. Its runtime stays disabled unless
+# a separate, brand-bound device test build is explicitly requested.
+WATCHFIX_WITH_SLEEP_SYNC ?= 1
 ifeq ($(WATCHFIX_WITH_SLEEP_SYNC),1)
 SUBPROJECTS += Modules/SleepSync
 after-stage::

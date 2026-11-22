@@ -3,9 +3,11 @@
 # This file is DATA until explicitly launched on a device. No host/device auto-discovery.
 # All absolute paths are in the jailbreak root view. No source/eval, preferences, DBs,
 # user-supplied executable, synthetic ACK, or retry that can replenish a send budget.
-# Packaging supplies payload.sha256: exactly four lowercase SHA256/name lines.
+# Packaging supplies payload.sha256 and postload.sha256: each exactly four
+# lowercase SHA256/name lines, never a wildcard for unaudited loader transforms.
 # The bridge creates the mobile-owned 0700 session, identity and focus directories and
-# current-session.plist; native gates bind that pointer, UUID, boot and expiry themselves.
+# current-session.plist plus canonical start-unix/deadline-unix files. Native gates
+# bind that pointer, UUID, boot and expiry themselves; worker entry never renews expiry.
 set -u
 PATH=/usr/bin:/bin:/usr/sbin:/sbin:/basebin
 export PATH
@@ -78,28 +80,60 @@ original_hash() {
         *) return 1;;
     esac
 }
-payload_hash() {
+manifest_hash() {
     # Do not source a shell hash file or let sha256sum -c interpret filenames.
-    rootfile "$runtime/payload.sha256" || return 1
-    [ "$(/usr/bin/stat -f %z "$runtime/payload.sha256")" -le 1024 ] || return 1
+    rootfile "$1" || return 1
+    [ "$(/usr/bin/stat -f %z "$1")" -le 1024 ] || return 1
     seen=' ' found='' count=0
-    while IFS=' ' read -r digest name extra; do
+    while IFS=' ' read -r digest name extra || [ -n "$digest$name$extra" ]; do
         [ -z "$extra" ] && [ "${#digest}" -eq 64 ] || return 1
         case "$digest" in *[!0-9a-f]*) return 1;; esac
         case "$name" in "$hello.dylib"|"$hello.plist"|"$focus.dylib"|"$focus.plist") ;; *) return 1;; esac
         case "$seen" in *" $name "*) return 1;; esac
         seen="$seen$name " count=$((count + 1))
-        [ "$name" != "$1" ] || found=$digest
-    done < "$runtime/payload.sha256"
+        [ "$name" != "$2" ] || found=$digest
+    done < "$1"
     [ "$count" -eq 4 ] && [ -n "$found" ] || return 1
     printf '%s\n' "$found"
 }
+payload_hash() { manifest_hash "$runtime/payload.sha256" "$1"; }
+postload_hash() { manifest_hash "$runtime/postload.sha256" "$1"; }
 mark() { safe_session && /bin/mkdir "$work/$1"; }
 marked() { directory "$work/$1"; }
 now() {
     time_value=$(/usr/bin/date +%s) || return 1
     case "$time_value" in ''|*[!0-9]*) return 1;; esac
     printf '%s\n' "$time_value"
+}
+session_number() {
+    # Bridge-owned decimal bytes, optionally followed by ONE LF. No whitespace,
+    # signs, leading zeroes, shell arithmetic expressions, links or loose modes.
+    plain "$1" || return 1
+    number_metadata=$(/usr/bin/stat -f %u:%Lp "$1") || return 1
+    case "$number_metadata" in 0:600|501:600) ;; *) return 1;; esac
+    number_size=$(/usr/bin/stat -f %z "$1") || return 1
+    case "$number_size" in ''|*[!0-9]*) return 1;; esac
+    [ "$number_size" -gt 0 ] && [ "$number_size" -le 16 ] || return 1
+    number_value=''
+    IFS= read -r number_value < "$1"
+    number_read=$?
+    case "$number_value" in ''|0*|*[!0-9]*) return 1;; esac
+    # Check the byte count as well as read's line/EOF result: trailing extra lines
+    # and embedded NULs must not turn into an apparently canonical shell value.
+    if [ "$number_read" -eq 0 ]; then
+        [ "$number_size" -eq "$((${#number_value} + 1))" ] || return 1
+    else
+        [ "$number_read" -eq 1 ] && [ "$number_size" -eq "${#number_value}" ] || return 1
+    fi
+    printf '%s\n' "$number_value"
+}
+session_times() {
+    # Snapshot each bridge value once, even on re-entry. Never use now()+420.
+    bridge_start=$(session_number "$session/start-unix") || return 1
+    bridge_deadline=$(session_number "$session/deadline-unix") || return 1
+    [ "$bridge_deadline" -gt "$bridge_start" ] || return 1
+    [ "$((bridge_deadline - bridge_start))" -le 420 ] || return 1
+    started=$bridge_start deadline=$bridge_deadline
 }
 write_status() {
     safe_session || return 1
@@ -167,15 +201,16 @@ install_pair() {
     done
 }
 restore_pair() {
-    # Do not overwrite external changes, including unreviewed RootHide post-load
-    # transforms. Such a build remains HOLD until its exact transformed hash is
-    # audited; no semantic/wildcard acceptance is implied by the module manifest.
+    # Only an exact packaged post-load digest can authorize transformed bytes;
+    # unreviewed RootHide transforms and external changes remain fail-closed.
     for check_ext in dylib plist; do
         check_name="$1.$check_ext"
         check_current=$(hash "$target/$check_name") || return 1
         check_original=$(original_hash "$check_name") || return 1
         check_payload=$(payload_hash "$check_name") || return 1
-        [ "$check_current" = "$check_original" ] || [ "$check_current" = "$check_payload" ] || return 1
+        check_postload=$(postload_hash "$check_name") || return 1
+        [ "$check_current" = "$check_original" ] || [ "$check_current" = "$check_payload" ] ||
+            [ "$check_current" = "$check_postload" ] || return 1
     done
     for ext in dylib plist; do
         name="$1.$ext" permissions=644
@@ -326,24 +361,12 @@ session_inode=$(/usr/bin/stat -f %d:%i "$session") || exit 78
 session_tree && safe_target && safe_runtime || exit 78
 if /bin/mkdir "$work" 2>/dev/null; then
     safe_session || exit 78
-    started=$(now) || exit 78
-    deadline=$((started + 420))
-    printf '%s\n' "$started" > "$work/started-unix" || exit 78
 else
     # Existing marker means crash/re-entry, including half-written startup state.
     recovering=true
     safe_session || exit 78
-    if rootfile "$work/started-unix"; then
-        IFS= read -r started < "$work/started-unix" || started=0
-    fi
-    case "$started" in ''|*[!0-9]*) started=0;; esac
-    [ "${#started}" -le 12 ] || started=0
-    [ "$started" -gt 0 ] || started=$(now) || exit 78
-    deadline=$((started + 420))
     marked sent-observed && sends=1
     marked ack-matched && ack=true
-    trap finish HUP INT TERM
-    finish
 fi
 trap finish HUP INT TERM
 
@@ -352,8 +375,14 @@ trap finish HUP INT TERM
 if [ -e "$session/recovery-requested" ] || [ -L "$session/recovery-requested" ]; then
     recovering=true
     rootfile "$session/recovery-requested" || exit 78
+fi
+# Invalid timing is never activation permission. Recovery is cleanup-only even
+# with missing/corrupt times; zero explicitly denotes unknown recovery timing.
+if ! session_times; then
+    started=0 deadline=0
     finish
 fi
+[ "$recovering" != true ] || finish
 
 prepare() {
     write_status preparing preparing || return 1
@@ -361,6 +390,7 @@ prepare() {
     for name in "$hello.dylib" "$hello.plist" "$focus.dylib" "$focus.plist"; do
         [ "$(hash "$target/$name")" = "$(original_hash "$name")" ] || return 1
         expected=$(payload_hash "$name") || return 1
+        expected_postload=$(postload_hash "$name") || return 1
         [ "$(hash "$runtime/$name")" = "$expected" ] || return 1
     done
     mark backup || return 1
@@ -375,6 +405,7 @@ prepare() {
     done
 }
 run_session() {
+    poll_guard || return 1
     prepare || return 1
     poll_guard || return 1
     install_pair identity "$hello" || return 1

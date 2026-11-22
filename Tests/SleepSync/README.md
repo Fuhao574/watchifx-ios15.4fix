@@ -7,6 +7,10 @@ phone, run a real launchctl action, or send IDS/Focus messages.
 mkdir -p reports
 python3 Tests/SleepSync/test_sleep_sync_coordinator.py
 python3 Tests/SleepSync/test_sleep_module_session.py
+python3 Tests/SleepSync/test_root_launcher.py
+python3 Tests/SleepSync/test_postload_digest.py
+# After building Runtime/Focus and Runtime/Identity locally:
+python3 Tests/SleepSync/test_runtime_staging.py
 xcrun swiftc -warnings-as-errors App/Models/SleepSync.swift Tests/SleepSync/test_sleep_sync_state.swift -o reports/sleep-sync-state-test
 reports/sleep-sync-state-test
 ```
@@ -24,4 +28,6 @@ device diagnostics or firmware is required or included.
 
 Host success does not establish device launch permissions, RootHide post-load
 hash acceptance, Watch identity recovery, persistence or notification behavior.
-Keep `enabledForDevice=false` until those separate acceptance steps are complete.
+Default builds keep `enabledForDevice=false`. A maintainer may explicitly build a
+brand-bound test candidate for a separately authorized device acceptance test;
+this is not a public-ready release or implicit permission to install/send.
