@@ -156,6 +156,22 @@ enum SleepSyncStateTests {
         check(snapshot(noBackend).needsRecovery, "lost active backend requires recovery")
 
         let encoded = try JSONEncoder().encode(verified)
+        for (phase, stage) in [(WFSleepSyncSnapshot.Phase.preparing, 1), (.identity, 2),
+                               (.waitingForSave, 3), (.sending, 4), (.acknowledged, 4),
+                               (.restoring, 5), (.finished, 6)] {
+            var value = status(phase)
+            value["cleanupVerified"] = phase == .finished
+            if [.sending, .acknowledged, .finished].contains(phase) { value["sends"] = 1 }
+            if [.acknowledged, .finished].contains(phase) { value["ackMatched"] = true }
+            let result = snapshot(value)
+            check(result.progressStage == stage, "workflow progress stage \(phase)")
+            check(result.stageProgress == Float(stage) / 6, "workflow fraction \(phase)")
+        }
+        for phase in [WFSleepSyncSnapshot.Phase.idle, .cancelled, .failed, .recoveryRequired, .unavailable] {
+            check(snapshot(status(phase)).stageProgress == nil, "no false completion on \(phase)")
+        }
+        check(dirtyFinished.stageProgress == nil, "unverified cleanup has no completed bar")
+        check(stale.stageProgress == nil, "expired phase cannot show completed progress")
         for reason in ["noNativeSource", "sourceNotEligible", "ackNotObserved"] {
             var value = status(.failed)
             value["messageCode"] = reason

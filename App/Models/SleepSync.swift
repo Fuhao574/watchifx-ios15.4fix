@@ -124,6 +124,22 @@ struct WFSleepSyncSnapshot: Codable, Equatable {
 
     var needsRecovery: Bool { phase == .recoveryRequired }
 
+    /// Workflow stages, NOT elapsed time or proof of delivery. Only a verified
+    /// finished session reaches the last stage; failed/cancelled never show 100%.
+    var progressStage: Int? {
+        switch phase {
+        case .preparing: return 1
+        case .identity: return 2
+        case .waitingForSave: return 3
+        case .sending, .acknowledged: return 4
+        case .restoring: return 5
+        case .finished: return ackMatched && cleanupVerified && sends == 1 ? 6 : nil
+        default: return nil
+        }
+    }
+
+    var stageProgress: Float? { progressStage.map { Float($0) / 6 } }
+
     /// Stable localization keys, not already localized text. A matching ACK is not success.
     var statusTitle: String { "sleepSync.status.\(presentationCode.rawValue)" }
     var statusDetail: String { "sleepSync.detail.\(presentationCode.rawValue)" }

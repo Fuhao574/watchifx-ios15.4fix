@@ -1,4 +1,6 @@
 #import "SleepSyncBridge.h"
+#import "PluginConfig.h"
+#import "../Plugin/PluginBridge.h"
 #import <roothide.h>
 #include <spawn.h>
 #include <sys/wait.h>
@@ -76,6 +78,8 @@ static BOOL SSHasSessionEvidence(void) {
 }
 static NSString *SSSession(NSString *identifier) {return [[SSPath(WFSSRoot) stringByAppendingPathComponent:@"Sessions"] stringByAppendingPathComponent:identifier];}
 static BOOL SSBackendAvailable(void) {
+    NSNumber *registered=[WFPluginBridge pluginStates][@"FocusConfigCompatibility"];
+    if(registered && !registered.boolValue)return NO;
     NSString *root=SSPath(WFSSRuntime);NSDictionary *manifest=SSRead([root stringByAppendingPathComponent:@"module-info.plist"]);
     // Build/audit must explicitly approve runtime packaging; absence is not success.
     if(![manifest[@"schema"] isEqual:@1]||![manifest[@"enabledForDevice"] isEqual:@YES])return NO;
@@ -107,6 +111,32 @@ static BOOL SSRunLauncher(NSString *operation,NSString *identifier,NSError **err
 }
 static NSDictionary *SSIdle(BOOL available) {return @{@"phase":available?@"idle":@"unavailable",@"messageCode":available?@"idle":@"unavailable",@"ackMatched":@NO,@"userVerified":@NO,@"cleanupVerified":@YES,@"backendAvailable":@(available),@"sends":@0};}
 @implementation WFSleepSyncBridge
++ (BOOL)setRegistered:(BOOL)enabled context:(WFPluginConfigurationContext *)context error:(NSError **)error {
+    @synchronized(self) {
+        if(![context.pluginIdentifier isEqual:@"FocusConfigCompatibility"])return SSErr(error,20,@"无效的模块注册操作。");
+        if(!SSRootReady(error))return NO;
+        int fd=open([[SSPath(WFSSRoot) stringByAppendingPathComponent:@"start.lock"] fileSystemRepresentation],O_WRONLY|O_CREAT|O_NOFOLLOW|O_CLOEXEC,0600);
+        if(fd<0||flock(fd,LOCK_EX|LOCK_NB)){if(fd>=0)close(fd);return SSErr(error,11,@"已有同步请求正在准备。");}
+        @try {
+            NSDictionary *status=[self snapshot];
+            if(![status[@"cleanupVerified"] isEqual:@YES] ||
+               ![@[@"idle",@"unavailable",@"finished",@"failed",@"cancelled"] containsObject:status[@"phase"]])
+                return SSErr(error,21,@"请先在设置中取消并完成恢复，再删除模块。");
+            // Never treat a false install-state preference as proof of clean files.
+            // Refuse rather than delete unknown legacy or live session components.
+            for(NSString *stem in @[@"WatchFix_FocusConfigCompatibility",@"WatchFix_HelloReadOnlyObserver"]) {
+                for(NSString *ext in @[@"dylib",@"plist"]) {
+                    NSString *path=SSPath([NSString stringWithFormat:@"/usr/lib/TweakInject/%@.%@",stem,ext]);struct stat st;
+                    if(!lstat(path.fileSystemRepresentation,&st)||errno!=ENOENT)
+                        return SSErr(error,22,@"仍有实验组件或路径不可核验；请先完成恢复，未删除任何文件。");
+                }
+            }
+            // Default implementation changes only this plugin's registration;
+            // sessions/consumed receipts remain for audit, other modules untouched.
+            return enabled?[context installUsingDefaultImplementation:error]:[context removeUsingDefaultImplementation:error];
+        } @finally {flock(fd,LOCK_UN);close(fd);}
+    }
+}
 + (NSDictionary *)snapshot {
     BOOL available=SSBackendAvailable();NSString *identifier=SSCurrentID();
     if(!identifier) {

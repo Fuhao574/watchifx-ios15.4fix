@@ -64,15 +64,24 @@ def identity():
 def focus():
     path = session / "focus" / ("run-%s.log" % s["focus_pid"])
     scenario = s.get("scenario", "success")
-    if scenario == "no_source": return
+    ready = ("SLEEPMODULE1 startup session claimed=YES pid=%s issuedUnix=1\n"
+             "PASS policy-only hooks installed; enabled=YES controlUpgrade=NO\n") % s['focus_pid']
+    if s.get('focus_not_ready'):
+        if s['focus_not_ready'] == 'wrong-pid':
+            path.write_text(ready.replace('pid=%s ' % s['focus_pid'], 'pid=999 '))
+        elif s['focus_not_ready'] == 'lease-only': path.write_text(ready.splitlines()[0] + '\n')
+        elif s['focus_not_ready'] == 'hooks-only': path.write_text(ready.splitlines()[1] + '\n')
+        return
+    if scenario == "no_source": path.write_text(ready); return
     if scenario == "rejected_source":
-        path.write_text("outbound event=1 version=10 action=update\n")
+        path.write_text(ready + "outbound event=1 version=10 action=update\n")
         return
     if scenario == "oversized": path.write_text("x" * 32769); return
     if scenario == "other_session":
         (root / "old-session.log").write_text("SLEEPMODULE1 adding ONE Sleep v11 update; original native batch/completion preserved\n")
+        path.write_text(ready)
         return
-    text = ""
+    text = ready
     if scenario != "ack_only":
         text += "SLEEPMODULE1 adding ONE Sleep v11 update; original native batch/completion preserved\n"
     if scenario != "no_ack":
@@ -676,6 +685,17 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(f.status["phase"], "failed")
         self.assertEqual(f.state["restarts"], ["com.apple.identityservicesd"] * 2)
         self.assert_restored(f)
+
+    def test_waiting_for_save_requires_lease_and_hooks_from_current_focus_pid(self):
+        for kind in ('missing', 'wrong-pid', 'lease-only', 'hooks-only'):
+            with self.subTest(kind=kind):
+                f = self.fixture(focus_not_ready=kind)
+                f.run()
+                self.assertEqual(f.status['phase'], 'failed')
+                self.assertEqual(f.status['sends'], 0)
+                self.assertTrue(f.status['cleanupVerified'])
+                self.assertLessEqual(f.state['now'] - 1800000000, 90)
+                self.assert_restored(f)
 
     def test_partial_install_and_unresolved_restore_restart_are_fail_closed(self):
         f = self.fixture(fail_restart=5)

@@ -159,7 +159,7 @@ final class FeatureViewController: WFScrollStackViewController {
     private func makePluginCard(for plugin: PluginState) -> UIView {
         let isSleepSync = plugin.id == "FocusConfigCompatibility"
         let hasConfiguration = isSleepSync || plugin.metadata.hasConfigurationInterface
-        let onConfiguration: (() -> Void)? = hasConfiguration && !isSleepSync
+        let onConfiguration: (() -> Void)? = hasConfiguration
             ? { [weak self] in
                 self?.openPluginConfiguration(for: plugin)
             }
@@ -170,13 +170,13 @@ final class FeatureViewController: WFScrollStackViewController {
         return WFMakePluginCard(
             plugin: plugin,
             isBusy: store.isPluginBusy(plugin.id),
-            actionTitle: isSleepSync ? L("sleepSync.module.open") : (isUpdate ? L("common.update") : nil),
-            systemImage: isSleepSync ? "moon.zzz" : (isUpdate ? "arrow.triangle.2.circlepath" : nil),
-            isPrimary: isSleepSync || isUpdate ? true : nil,
+            actionTitle: isUpdate ? L("common.update") : nil,
+            systemImage: isUpdate ? "arrow.triangle.2.circlepath" : nil,
+            isPrimary: isUpdate ? true : nil,
             tintColor: isUpdate ? .systemBlue : nil,
-            configurationTitle: isSleepSync ? L("sleepSync.module.open") : L("features.plugins.configure"),
-            configurationSystemImage: isSleepSync ? "arrow.triangle.2.circlepath" : "slider.horizontal.3",
-            isConfigurationEnabled: hasConfiguration && !isSleepSync,
+            configurationTitle: L("features.plugins.configure"),
+            configurationSystemImage: "slider.horizontal.3",
+            isConfigurationEnabled: hasConfiguration && (!isSleepSync || plugin.available),
             onConfiguration: onConfiguration
         ) { [weak self] in
             self?.performPluginAction(for: plugin)
@@ -185,9 +185,17 @@ final class FeatureViewController: WFScrollStackViewController {
 
     private func performPluginAction(for plugin: PluginState) {
         if plugin.id == "FocusConfigCompatibility" {
-            // This is a manual operation module. Installing the old permanent
-            // research dylib would replace the very baseline restored by it.
-            openPluginConfiguration(for: plugin)
+            // Registration only; never installs the old permanent research dylib.
+            if plugin.available {
+                let confirm = UIAlertController(title: L("common.delete"), message: L("sleepSync.remove.confirm"), preferredStyle: .alert)
+                confirm.addAction(UIAlertAction(title: L("sleepSync.confirm.cancel"), style: .cancel))
+                confirm.addAction(UIAlertAction(title: L("common.delete"), style: .destructive) { [weak self] _ in
+                    self?.store.removePlugin(identifier: plugin.id)
+                })
+                present(confirm, animated: true)
+            } else {
+                store.installPlugin(identifier: plugin.id)
+            }
             return
         }
         if plugin.available && !plugin.needsUpdate {

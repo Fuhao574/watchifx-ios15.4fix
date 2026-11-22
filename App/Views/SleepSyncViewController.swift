@@ -80,12 +80,21 @@ final class SleepSyncViewController: WFScrollStackViewController {
         if let initialPlugin {
             let plugin = store.plugins.first { $0.id == initialPlugin.id } ?? initialPlugin
             contentStack.addArrangedSubview(WFMakePluginHeaderCard(plugin: plugin))
-            contentStack.addArrangedSubview(WFMakeInfoCard(text: plugin.detail))
         }
         var statusContents: [UIView] = [
             WFMakeTextLabel(L(snapshot.statusTitle), font: .preferredFont(forTextStyle: .headline)),
-            WFMakeSecondaryLabel(L(snapshot.statusDetail)),
         ]
+        if let stage = snapshot.progressStage, let progress = snapshot.stageProgress {
+            let caption = LF("sleepSync.progress.stage", stage, 6)
+            let progressView = UIProgressView(progressViewStyle: .default)
+            progressView.progressTintColor = snapshot.phase == .finished ? .systemGreen : .systemBlue
+            progressView.setProgress(progress, animated: false)
+            progressView.accessibilityLabel = caption
+            progressView.accessibilityValue = L(snapshot.statusTitle)
+            statusContents.append(progressView)
+            statusContents.append(WFMakeFootnoteLabel(caption))
+        }
+        statusContents.append(WFMakeSecondaryLabel(L(snapshot.statusDetail)))
         if snapshot.messageCode == .invalidStatus || snapshot.messageCode == .deadlineExceeded {
             statusContents.append(WFMakeFootnoteLabel(
                 L("sleepSync.detail.\(snapshot.messageCode.rawValue)"), color: .systemOrange
@@ -106,7 +115,6 @@ final class SleepSyncViewController: WFScrollStackViewController {
 
         contentStack.addArrangedSubview(WFMakeSection(
             title: L("sleepSync.section.actions"),
-            footer: L("sleepSync.actions.footer"),
             contents: [WFMakeCard([
                 WFMakeActionButton(
                     title: L("sleepSync.action.start"), systemImage: "moon.zzz",
@@ -127,10 +135,6 @@ final class SleepSyncViewController: WFScrollStackViewController {
                     isPrimary: false, isEnabled: !moduleStore.busy
                 ) { [weak self] in self?.moduleStore.refresh() },
             ])]
-        ))
-        contentStack.addArrangedSubview(WFMakeSection(
-            title: L("sleepSync.section.risks"),
-            contents: [WFMakeInfoCard(text: L("sleepSync.risks"))]
         ))
     }
 

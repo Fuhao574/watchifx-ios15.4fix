@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import "PluginConfig.h"
+#import "../../App/Bridge/SleepSync/SleepSyncBridge.h"
 
 static NSString *const kFocusConfigCompatibilityHooksEnabledKey = @"FocusConfigCompatibilityHooksEnabled";
 
@@ -7,6 +8,12 @@ static NSString *const kFocusConfigCompatibilityHooksEnabledKey = @"FocusConfigC
 @end
 
 @implementation FocusConfigCompatibilityPluginConfiguration
++ (BOOL)installPluginWithContext:(WFPluginConfigurationContext *)context error:(NSError **)error {
+    return [WFSleepSyncBridge setRegistered:YES context:context error:error];
+}
++ (BOOL)removePluginWithContext:(WFPluginConfigurationContext *)context error:(NSError **)error {
+    return [WFSleepSyncBridge setRegistered:NO context:context error:error];
+}
 
 + (NSDictionary<NSString *, id> *)configurationPageWithContext:(WFPluginConfigurationContext *)context {
     (void)context;

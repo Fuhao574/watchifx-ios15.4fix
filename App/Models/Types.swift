@@ -384,7 +384,7 @@ enum Catalog {
                 let installedMetadata = installedVersions[identifier]
                 let available = metadata.hasInstallableContent
                     ? (stateValue || installedMetadata != nil)
-                    : true
+                    : (identifier == "FocusConfigCompatibility" ? stateValue : true)
                 return PluginState(
                     metadata: metadata,
                     enabled: stateValue,

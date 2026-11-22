@@ -314,6 +314,33 @@ wait_identity() {
     done
     return 1
 }
+wait_focus_ready() {
+    # A new PID alone is not permission to ask the user to save. Require this
+    # exact process's startup lease AND completed hooks, within the original TTL.
+    ready_until=$(( $(now) + 30 )) || return 1
+    ready_ticks=0
+    while [ "$ready_ticks" -lt 30 ]; do
+        poll_guard || return 1
+        [ "$(now)" -lt "$policy_deadline" ] || return 1
+        [ "$(pid_for donotdisturbd)" = "$focus_pid" ] || return 1
+        ready_log=$(read_log "$session/focus/run-$focus_pid.log") || ready_log=''
+        ready_claim=false
+        while IFS= read -r ready_line; do
+            case "$ready_line" in
+                *"SLEEPMODULE1 startup session claimed=YES pid=$focus_pid "*) ready_claim=true;;
+            esac
+        done <<EOF
+$ready_log
+EOF
+        if [ "$ready_claim" = true ]; then
+            case "$ready_log" in *'PASS policy-only hooks installed; enabled=YES controlUpgrade=NO'*) return 0;; esac
+        fi
+        [ "$(now)" -lt "$ready_until" ] || return 1
+        /bin/sleep 1 || return 1
+        ready_ticks=$((ready_ticks + 1))
+    done
+    return 1
+}
 revoke() {
     safe_session || return 1
     if [ -e "$1" ] || [ -L "$1" ]; then
@@ -513,6 +540,7 @@ EOF
         pid_ticks=$((pid_ticks + 1))
     done
     [ -n "$focus_pid" ] && [ "$focus_pid" != "$previous_focus_pid" ] || return 1
+    wait_focus_ready || return 1
     write_status waitingForSave waitingForSave || return 1
     failure=noNativeSource
     ticks=0 source_at=0 ack_at=0
