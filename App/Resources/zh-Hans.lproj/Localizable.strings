@@ -298,5 +298,14 @@
 "sleepSync.status.userVerified" = "后端报告已由用户验证";
 "sleepSync.detail.userVerified" = "后端报告会话已结束，具有匹配 ACK、经验证的清理及用户验证。本页面不会创建或更改该验证标志。";
 "sleepSync.module.open" = "同步操作";
-"sleepSync.progress.stage" = "流程进度 %d / %d";
+"sleepSync.progress.prepare" = "准备会话";
+"sleepSync.progress.identity" = "准备连接";
+"sleepSync.progress.save" = "保存睡眠设置";
+"sleepSync.progress.send" = "发送配置";
+"sleepSync.progress.ack" = "等待手表确认";
+"sleepSync.progress.cleanup" = "恢复与清理";
+"sleepSync.progress.pending" = "未开始";
+"sleepSync.progress.active" = "进行中";
+"sleepSync.progress.complete" = "已完成";
+"sleepSync.progress.unknown" = "未确认";
 "sleepSync.remove.confirm" = "删除睡眠同步模块的启用状态，不修改系统睡眠配置，也不删除其他修复模块。运行中的会话或残留注入组件必须先恢复；历史备份和已消耗凭据会保留。之后可从未安装列表重新安装模块。";

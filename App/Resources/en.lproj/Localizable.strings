@@ -298,5 +298,14 @@
 "sleepSync.status.userVerified" = "Backend Reports User Verification";
 "sleepSync.detail.userVerified" = "The backend reports a finished session with a matching ACK, verified cleanup, and user verification. This page neither creates nor changes that verification flag.";
 "sleepSync.module.open" = "Sync Options";
-"sleepSync.progress.stage" = "Workflow stage %d / %d";
+"sleepSync.progress.prepare" = "Prepare session";
+"sleepSync.progress.identity" = "Prepare connection";
+"sleepSync.progress.save" = "Save Sleep settings";
+"sleepSync.progress.send" = "Send configuration";
+"sleepSync.progress.ack" = "Wait for watch acknowledgment";
+"sleepSync.progress.cleanup" = "Restore and clean up";
+"sleepSync.progress.pending" = "Not started";
+"sleepSync.progress.active" = "In progress";
+"sleepSync.progress.complete" = "Complete";
+"sleepSync.progress.unknown" = "Unconfirmed";
 "sleepSync.remove.confirm" = "Remove this module's enabled registration without changing system Sleep settings or other fixes. Active sessions and injected components must be restored first. Historical backups and consumed receipts are preserved. The module can be installed again from the uninstalled list.";

@@ -84,15 +84,27 @@ final class SleepSyncViewController: WFScrollStackViewController {
         var statusContents: [UIView] = [
             WFMakeTextLabel(L(snapshot.statusTitle), font: .preferredFont(forTextStyle: .headline)),
         ]
-        if let stage = snapshot.progressStage, let progress = snapshot.stageProgress {
-            let caption = LF("sleepSync.progress.stage", stage, 6)
+        for step in snapshot.progressSteps {
+            let caption = L("sleepSync.progress.\(step.key)")
+            let stateText = L("sleepSync.progress.\(step.state.rawValue)")
+            let heading = UIStackView(arrangedSubviews: [
+                WFMakeSecondaryLabel(caption), WFMakeFootnoteLabel(stateText),
+            ])
+            heading.axis = .horizontal
+            heading.distribution = .equalSpacing
+            heading.spacing = 8
+            if step.state == .active {
+                let spinner = UIActivityIndicatorView(style: .medium)
+                spinner.startAnimating()
+                heading.addArrangedSubview(spinner)
+            }
             let progressView = UIProgressView(progressViewStyle: .default)
-            progressView.progressTintColor = snapshot.phase == .finished ? .systemGreen : .systemBlue
-            progressView.setProgress(progress, animated: false)
+            progressView.progressTintColor = step.state == .complete ? .systemGreen : .systemBlue
+            progressView.setProgress(step.state == .complete ? 1 : 0, animated: false)
             progressView.accessibilityLabel = caption
-            progressView.accessibilityValue = L(snapshot.statusTitle)
+            progressView.accessibilityValue = stateText
+            statusContents.append(heading)
             statusContents.append(progressView)
-            statusContents.append(WFMakeFootnoteLabel(caption))
         }
         statusContents.append(WFMakeSecondaryLabel(L(snapshot.statusDetail)))
         if snapshot.messageCode == .invalidStatus || snapshot.messageCode == .deadlineExceeded {

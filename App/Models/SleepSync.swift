@@ -124,21 +124,40 @@ struct WFSleepSyncSnapshot: Codable, Equatable {
 
     var needsRecovery: Bool { phase == .recoveryRequired }
 
-    /// Workflow stages, NOT elapsed time or proof of delivery. Only a verified
-    /// finished session reaches the last stage; failed/cancelled never show 100%.
-    var progressStage: Int? {
-        switch phase {
-        case .preparing: return 1
-        case .identity: return 2
-        case .waitingForSave: return 3
-        case .sending, .acknowledged: return 4
-        case .restoring: return 5
-        case .finished: return ackMatched && cleanupVerified && sends == 1 ? 6 : nil
-        default: return nil
-        }
+    enum StepState: String { case pending, active, complete, unknown }
+    struct ProgressStep {
+        let key: String
+        let state: StepState
     }
 
-    var stageProgress: Float? { progressStage.map { Float($0) / 6 } }
+    /// Separate bars for actual workflow steps. No invented within-step percent.
+    /// Cleanup on a failed run does not imply that saving/sending succeeded.
+    var progressSteps: [ProgressStep] {
+        let keys = ["prepare", "identity", "save", "send", "ack", "cleanup"]
+        var states = Array(repeating: StepState.pending, count: keys.count)
+        let current: Int?
+        switch phase {
+        case .preparing: current = 0
+        case .identity: current = 1
+        case .waitingForSave: current = 2
+        case .sending: current = 4 // send attempt is recorded; waiting for ACK
+        default: current = nil
+        }
+        if let current {
+            for index in 0..<current { states[index] = .complete }
+            states[current] = .active
+        } else if phase == .acknowledged {
+            for index in 0..<5 { states[index] = .complete }
+        } else if phase == .finished {
+            states = Array(repeating: .complete, count: keys.count)
+        } else if [.restoring, .failed, .cancelled, .recoveryRequired].contains(phase) {
+            states = Array(repeating: .unknown, count: keys.count)
+            states[3] = sends == 1 ? .complete : .unknown
+            states[4] = ackMatched ? .complete : .unknown
+            states[5] = phase == .restoring ? .active : (cleanupVerified ? .complete : .unknown)
+        }
+        return zip(keys, states).map { ProgressStep(key: $0.0, state: $0.1) }
+    }
 
     /// Stable localization keys, not already localized text. A matching ACK is not success.
     var statusTitle: String { "sleepSync.status.\(presentationCode.rawValue)" }

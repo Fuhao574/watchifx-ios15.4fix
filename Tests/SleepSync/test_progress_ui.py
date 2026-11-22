@@ -9,7 +9,9 @@ class ProgressUITests(unittest.TestCase):
     def test_stage_bar_and_short_page_preserve_required_actions(self):
         source = (ROOT/'App/Views/SleepSyncViewController.swift').read_text()
         self.assertIn('UIProgressView(progressViewStyle: .default)', source)
-        self.assertIn('snapshot.progressStage', source)
+        self.assertIn('for step in snapshot.progressSteps', source)
+        self.assertIn('UIActivityIndicatorView(style: .medium)', source)
+        self.assertNotIn('snapshot.stageProgress', source)
         self.assertIn('progressView.accessibilityLabel = caption', source)
         self.assertNotIn('WFMakeInfoCard(text: plugin.detail)', source)
         self.assertNotIn('L("sleepSync.risks")', source)

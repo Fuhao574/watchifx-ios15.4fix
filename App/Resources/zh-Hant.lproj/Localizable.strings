@@ -298,5 +298,14 @@
 "sleepSync.status.userVerified" = "後端回報已由使用者驗證";
 "sleepSync.detail.userVerified" = "後端回報工作階段已結束，具有相符 ACK、經驗證的清理及使用者驗證。本頁面不會建立或更改該驗證旗標。";
 "sleepSync.module.open" = "同步操作";
-"sleepSync.progress.stage" = "流程進度 %d / %d";
+"sleepSync.progress.prepare" = "準備工作階段";
+"sleepSync.progress.identity" = "準備連線";
+"sleepSync.progress.save" = "儲存睡眠設定";
+"sleepSync.progress.send" = "傳送設定";
+"sleepSync.progress.ack" = "等待手錶確認";
+"sleepSync.progress.cleanup" = "還原與清理";
+"sleepSync.progress.pending" = "尚未開始";
+"sleepSync.progress.active" = "進行中";
+"sleepSync.progress.complete" = "已完成";
+"sleepSync.progress.unknown" = "未確認";
 "sleepSync.remove.confirm" = "刪除睡眠同步模組的啟用狀態，不修改系統睡眠設定，也不刪除其他修復模組。執行中的工作階段或殘留注入元件必須先恢復；歷史備份和已消耗憑據會保留。之後可從未安裝清單重新安裝模組。";
