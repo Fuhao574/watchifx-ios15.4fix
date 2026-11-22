@@ -37,8 +37,8 @@ BASELINES = [
     "10d0ed6e2671c0be7ac4dedda4ba4aa890a5103581208ec383dfd1d9b2c8346a",
 ]
 TOOLS = ("/usr/bin/id", "/usr/bin/stat", "/usr/bin/sha256sum", "/usr/bin/date",
-         "/usr/sbin/sysctl", "/bin/mkdir", "/bin/cat", "/bin/chmod", "/bin/mv",
-         "/bin/cp", "/bin/ps", "/usr/bin/head", "/bin/sleep", "/usr/sbin/chown")
+         "/usr/sbin/sysctl", "/bin/mkdir", "/bin/cat", "/usr/bin/chmod", "/bin/mv",
+         "/bin/cp", "/rootfs/bin/ps", "/usr/bin/head", "/bin/sleep", "/usr/sbin/chown")
 
 # Executed in a persistent fixture-local dispatcher, never as a subprocess.
 STUB = r'''
@@ -79,14 +79,21 @@ def focus():
 try:
     if name == "id": print(0)
     elif name == "stat":
+        assert len(a) == 3 and a[0] in ("-c", "-f")
         p = pathlib.Path(a[-1]); st = p.lstat(); fmt = a[1]
         mobile = p in (session, session / "identity", session / "focus",
                        session / "start-unix", session / "deadline-unix")
         uid = 501 if mobile else 0
         uid = s.get("owners", {}).get(str(p.relative_to(root)), uid)
-        values = {"%u": str(uid), "%l": str(st.st_nlink), "%Lp": oct(stat.S_IMODE(st.st_mode))[2:],
-                  "%u:%Lp": "%s:%o" % (uid, stat.S_IMODE(st.st_mode)),
-                  "%d:%i": "%s:%s" % (st.st_dev, st.st_ino), "%z": str(st.st_size)}
+        mode = "%o" % stat.S_IMODE(st.st_mode)
+        values = {"%u": str(uid), "%h": str(st.st_nlink), "%a": mode,
+                  "%u:%h": "%s:%s" % (uid, st.st_nlink),
+                  "%u:%a": "%s:%s" % (uid, mode),
+                  "%d:%i": "%s:%s" % (st.st_dev, st.st_ino), "%s": str(st.st_size)}
+        # Keep BSD aliases for reviewed historical sources; neither invokes host stat.
+        values.update({"%l": values["%h"], "%Lp": values["%a"],
+                       "%u:%l": values["%u:%h"], "%u:%Lp": values["%u:%a"],
+                       "%z": values["%s"]})
         print(values[fmt])
     elif name == "sha256sum":
         p = pathlib.Path(a[0]); print(hashlib.sha256(p.read_bytes()).hexdigest(), str(p))
@@ -105,8 +112,14 @@ try:
     elif name == "mv":
         log("move"); src, dst = a[-2:]; os.replace(src, dst)
     elif name == "ps":
-        print("%s /usr/libexec/identityservicesd" % s["identity_pid"])
-        print("%s /usr/sbin/donotdisturbd" % s["focus_pid"])
+        for field, executable in (("identity_pid", "/usr/libexec/identityservicesd"),
+                                  ("focus_pid", "/usr/sbin/donotdisturbd")):
+            pid = s[field]
+            if s.get(field + "_pending"):
+                pid -= 1
+                s[field + "_pending"] -= 1
+            print("%s %s" % (pid, executable))
+        save()
         print("900 /usr/libexec/notidentityservicesd")
     elif name == "head":
         if len(a) > 2: data = pathlib.Path(a[2]).read_bytes()
@@ -121,8 +134,10 @@ try:
         if len(s["restarts"]) == s.get("fail_restart"): fail()
         if daemon == "com.apple.identityservicesd":
             s["identity_pid"] += 1; identity()
+            if s.get("delayed_pid"): s["identity_pid_pending"] = 1
         elif daemon == "com.apple.donotdisturbd":
             s["focus_pid"] += 1
+            if s.get("delayed_pid"): s["focus_pid_pending"] = 1
             if (session / "focus/policy-grant.plist").exists(): focus()
         else: raise RuntimeError("non-whitelisted daemon")
         save()
@@ -218,14 +233,14 @@ def translate_source(source, tools, fs, originals):
     if len(paths) != 1 or not re.fullmatch(
             r"PATH=/usr/bin:/bin:/usr/sbin:/sbin(?::/basebin)?", paths[0]):
         raise ValueError("unreviewed production PATH; refusing to execute fixture")
-    executable_pattern = r"(?<![\w/])/(?:usr/(?:s?bin)|s?bin|basebin)/[\w.-]+"
+    executable_pattern = r"(?<![\w/])/(?:rootfs/)?(?:usr/(?:s?bin)|s?bin|basebin)/[\w.-]+"
     unknown = set(re.findall(executable_pattern, source)) - set(TOOLS) - {"/bin/sh"}
     if unknown:
         raise ValueError("unreviewed executable paths: " + repr(sorted(unknown)))
     source = source.replace(paths[0], "PATH=" + str(tools))
     for path in TOOLS:
         source = source.replace(path, str(tools / Path(path).name))
-    source = re.sub(r"/var/mobile|/Applications|/usr/lib/TweakInject|/usr/lib|/usr(?=[ /;])",
+    source = re.sub(r"/var/mobile|/Applications|/Library/LaunchDaemons|/usr/lib/TweakInject|/usr/lib|/usr(?=[ /;])",
                     lambda m: str(fs) + m[0], source)
     for old, name in zip(BASELINES, NAMES):
         source = source.replace(old, hashlib.sha256(originals[name]).hexdigest())
@@ -245,6 +260,8 @@ class WorkerFixture:
         self.session = self.fs / "var/mobile/Library/Application Support/WatchFix/SleepSync/Sessions" / UUID
         self.target = self.fs / "usr/lib/TweakInject"
         self.runtime = self.fs / "Applications/WatchFix.app/SleepSyncRuntime"
+        self.jobs = self.fs / "Library/LaunchDaemons"
+        self.jobs.mkdir(parents=True, mode=0o755)
         for p in (self.session / "identity", self.session / "focus", self.target, self.runtime):
             p.mkdir(parents=True, mode=0o755)
         for p in (self.session, self.session / "identity", self.session / "focus"):
@@ -421,6 +438,18 @@ class CoordinatorTests(unittest.TestCase):
         self.assertIn('"$log_size" -le 32768', s)
         self.assertEqual(subprocess.run(["/bin/sh", "-n", str(SCRIPT)]).returncode, 0)
 
+    def test_terminal_cleanup_retires_only_its_exact_job_file(self):
+        f = self.fixture()
+        own_job = f.jobs / ('cn.fkj233.watchfix.sleepsync.' + UUID + '.plist')
+        other_job = f.jobs / 'other.plist'
+        own_job.write_bytes(b'exact job fixture')
+        other_job.write_bytes(b'normal service fixture')
+        f.run()
+        self.assertTrue(f.status['cleanupVerified'])
+        self.assertFalse(own_job.exists())
+        self.assertEqual((f.session / 'worker-entered/launchd-job.retired.plist').read_bytes(), b'exact job fixture')
+        self.assertEqual(other_job.read_bytes(), b'normal service fixture')
+
     def test_fixture_path_translation_is_fail_closed(self):
         f = self.fixture()
         source = SCRIPT.read_text()
@@ -431,8 +460,11 @@ class CoordinatorTests(unittest.TestCase):
                 translated = translate_source(variant, f.root / "tools", f.fs, f.originals)
                 self.assertIn("\nPATH=" + str(f.root / "tools") + "\n", translated)
                 self.assertNotIn("/bin/sleep", translated)
+                self.assertNotIn("/rootfs/bin/ps", translated)
+                self.assertIn(str(f.root / "tools/ps") + " -axo pid=,comm=", translated)
         for variant in (source.replace("PATH=", "PATH=/unexpected:"),
-                        source + "\n/usr/bin/unreviewed-tool\n"):
+                        source + "\n/usr/bin/unreviewed-tool\n",
+                        source + "\n/rootfs/bin/unreviewed-tool\n"):
             with self.assertRaises(ValueError):
                 translate_source(variant, f.root / "tools", f.fs, f.originals)
 
@@ -472,6 +504,15 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(f.status["phase"], "failed")
         self.assertTrue(f.status["cleanupVerified"])
         self.assertEqual((f.status["startedAt"], f.status["deadlineUnix"]), timing)
+        self.assert_restored(f)
+
+    def test_kickstart_can_return_before_replacement_pid_is_visible(self):
+        f = self.fixture(delayed_pid=True)
+        f.run()
+        self.assertEqual(f.status['phase'], 'finished')
+        self.assertTrue(f.status['cleanupVerified'])
+        self.assertEqual(f.status['sends'], 1)
+        self.assertEqual(len(f.state['restarts']), 6)
         self.assert_restored(f)
 
     def test_delayed_worker_uses_bridge_deadline_without_activation(self):
@@ -671,6 +712,84 @@ class CoordinatorTests(unittest.TestCase):
         self.assertFalse(f.status["cleanupVerified"])
         self.assertEqual((f.target / NAMES[0]).read_bytes(), b"unreviewed-postload-or-external-change")
         self.assertEqual(f.state["restarts"], [])
+
+    def test_clean_install_does_not_require_legacy_modules(self):
+        for absent_stems in ((HELLO,), (FOCUS,), (HELLO, FOCUS)):
+            with self.subTest(absent_stems=absent_stems):
+                f = self.fixture()
+                removed = [n for n in NAMES if n.split('.')[0] in absent_stems]
+                for n in removed:
+                    (f.target / n).unlink()
+                p = f.run()
+                self.assertEqual(p.returncode, 0, p.stderr)
+                self.assertEqual(f.status["phase"], "finished")
+                self.assertTrue(f.status["cleanupVerified"])
+                self.assertEqual(f.status["sends"], 1)
+                for n in NAMES:
+                    if n in removed:
+                        self.assertFalse((f.target / n).exists())
+                        self.assertTrue((f.session / 'worker-entered/backup' / (n + '.absent')).is_dir())
+                        self.assertTrue((f.session / 'worker-entered' / (n + '.retired')).is_file())
+                    else:
+                        self.assertEqual((f.target / n).read_bytes(), f.originals[n])
+                before = f.state["restarts"][:]
+                f.run()
+                self.assertTrue(f.status["cleanupVerified"])
+                self.assertEqual(f.state["restarts"], before)
+
+    def test_cancel_on_clean_install_keeps_it_clean(self):
+        f = self.fixture()
+        for n in NAMES:
+            (f.target / n).unlink()
+        (f.session / "cancel-requested").write_text("cancel")
+        f.run()
+        self.assertEqual(f.status["phase"], "cancelled")
+        self.assertTrue(f.status["cleanupVerified"])
+        self.assertEqual(f.state["restarts"], [])
+        self.assertFalse(any((f.target / n).exists() for n in NAMES))
+
+    def test_incomplete_or_linked_baseline_never_installs(self):
+        for kind in ('missing-half', 'symlink', 'hardlink'):
+            with self.subTest(kind=kind):
+                f = self.fixture()
+                name = NAMES[0]
+                p = f.target / name
+                if kind == 'missing-half':
+                    p.unlink()
+                else:
+                    other = f.root / 'original-library'
+                    p.rename(other)
+                    if kind == 'symlink': p.symlink_to(other)
+                    else: os.link(other, p)
+                f.run()
+                self.assertFalse(f.status['cleanupVerified'])
+                self.assertEqual(f.status['phase'], 'recoveryRequired')
+                self.assertEqual(f.state['restarts'], [])
+                self.assertNotIn('cp', f.command_counts)
+
+    def test_clean_dirty_recovery_only_quarantines_known_bytes(self):
+        for unknown in (False, True):
+            with self.subTest(unknown=unknown):
+                f = self.fixture()
+                work = f.session / 'worker-entered'
+                (work / 'backup').mkdir(parents=True, mode=0o700)
+                work.chmod(0o700)
+                (work / 'identity-dirty').mkdir(mode=0o700)
+                (work / 'backups-verified').mkdir(mode=0o700)
+                for n in NAMES:
+                    (f.target / n).unlink()
+                    (work / 'backup' / (n + '.absent')).mkdir(mode=0o700)
+                (f.target / NAMES[0]).write_bytes(b'unknown' if unknown else (f.runtime / NAMES[0]).read_bytes())
+                f.run()
+                self.assertEqual(f.status['cleanupVerified'], not unknown)
+                self.assertEqual(f.status['phase'], 'recoveryRequired' if unknown else 'failed')
+                self.assertFalse((f.target / NAMES[1]).exists())
+                if unknown:
+                    self.assertEqual((f.target / NAMES[0]).read_bytes(), b'unknown')
+                    self.assertEqual(f.state['restarts'], [])
+                else:
+                    self.assertFalse((f.target / NAMES[0]).exists())
+                    self.assertEqual(f.state['restarts'], ['com.apple.identityservicesd'])
 
     def test_exact_postload_hash_allows_original_restore(self):
         f = self.fixture()

@@ -22,7 +22,7 @@ public:
     BoundedLog() = default;
     BoundedLog(const BoundedLog &) = delete;
     ~BoundedLog() { if (file_ >= 0) close(file_); }
-    bool Open(const char *directoryPath) {
+    bool Open(const char *directoryPath, uid_t directoryOwner = geteuid()) {
         std::lock_guard<std::mutex> guard(lock_);
         if (attempted_) return false;
         attempted_ = true;
@@ -30,7 +30,7 @@ public:
         int directory = open(directoryPath, O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
         if (directory < 0) return false;
         struct stat st;
-        if (fstat(directory,&st) || !S_ISDIR(st.st_mode) || st.st_uid!=geteuid() || (st.st_mode&07777)!=0700) {
+        if (fstat(directory,&st) || !S_ISDIR(st.st_mode) || st.st_uid!=directoryOwner || (st.st_mode&07777)!=0700) {
             close(directory); return false;
         }
         char name[64]; snprintf(name,sizeof(name),"run-%d.log",getpid());

@@ -30,20 +30,20 @@ focus=WatchFix_FocusConfigCompatibility
 started=0 deadline=0 ack=false sends=0 clean=false
 failure=failed cancelled=false recovering=false
 
-# BSD stat: never follow a final symlink, reject hardlinks, unexpected owner/mode.
+# Procursus GNU stat: do not follow a final symlink; reject links/owner/mode.
 # The bridge must serialize sessions. The inode pin catches replaced session roots;
 # shell checks are defense in depth, not a substitute for trusted native root bridging.
-plain() { [ ! -L "$1" ] && [ -f "$1" ] && [ "$(/usr/bin/stat -f %l "$1")" = 1 ]; }
-rootfile() { plain "$1" && [ "$(/usr/bin/stat -f %u "$1")" = 0 ]; }
+plain() { [ ! -L "$1" ] && [ -f "$1" ] && [ "$(/usr/bin/stat -c %h "$1")" = 1 ]; }
+rootfile() { plain "$1" && [ "$(/usr/bin/stat -c %u "$1")" = 0 ]; }
 directory() { [ ! -L "$1" ] && [ -d "$1" ]; }
 secure_rootdir() {
     directory "$1" || return 1
-    [ "$(/usr/bin/stat -f %u "$1")" = 0 ] || return 1
-    mode=$(/usr/bin/stat -f %Lp "$1") || return 1
+    [ "$(/usr/bin/stat -c %u "$1")" = 0 ] || return 1
+    mode=$(/usr/bin/stat -c %a "$1") || return 1
     case "$mode" in 700|755|750|555) ;; *) return 1;; esac
 }
 mobile_dir() {
-    directory "$1" && [ "$(/usr/bin/stat -f %u:%Lp "$1")" = 501:700 ]
+    directory "$1" && [ "$(/usr/bin/stat -c %u:%a "$1")" = 501:700 ]
 }
 session_tree() {
     # /var itself may be the platform's normal /private/var alias.
@@ -52,7 +52,7 @@ session_tree() {
         directory "$p" || return 1
     done
     mobile_dir "$session" && mobile_dir "$session/identity" && mobile_dir "$session/focus" || return 1
-    [ "$(/usr/bin/stat -f %d:%i "$session")" = "$session_inode" ]
+    [ "$(/usr/bin/stat -c %d:%i "$session")" = "$session_inode" ]
 }
 safe_session() { session_tree && secure_rootdir "$work"; }
 safe_target() {
@@ -83,7 +83,7 @@ original_hash() {
 manifest_hash() {
     # Do not source a shell hash file or let sha256sum -c interpret filenames.
     rootfile "$1" || return 1
-    [ "$(/usr/bin/stat -f %z "$1")" -le 1024 ] || return 1
+    [ "$(/usr/bin/stat -c %s "$1")" -le 1024 ] || return 1
     seen=' ' found='' count=0
     while IFS=' ' read -r digest name extra || [ -n "$digest$name$extra" ]; do
         [ -z "$extra" ] && [ "${#digest}" -eq 64 ] || return 1
@@ -98,6 +98,20 @@ manifest_hash() {
 }
 payload_hash() { manifest_hash "$runtime/payload.sha256" "$1"; }
 postload_hash() { manifest_hash "$runtime/postload.sha256" "$1"; }
+absent() { [ ! -e "$1" ] && [ ! -L "$1" ]; }
+# Absence is an explicit, root-owned journal entry, never inferred during recovery.
+was_absent() { secure_rootdir "$work/backup" && secure_rootdir "$work/backup/$1.absent"; }
+baseline_matches() {
+    if was_absent "$1"; then
+        absent "$target/$1"
+    elif ! marked backups-verified && ! marked identity-dirty && ! marked focus-dirty &&
+         absent "$target/${1%.*}.dylib" && absent "$target/${1%.*}.plist"; then
+        # Cancel/expiry or validation failure before installing anything.
+        return 0
+    else
+        [ "$(hash "$target/$1")" = "$(original_hash "$1")" ]
+    fi
+}
 mark() { safe_session && /bin/mkdir "$work/$1"; }
 marked() { directory "$work/$1"; }
 now() {
@@ -109,9 +123,9 @@ session_number() {
     # Bridge-owned decimal bytes, optionally followed by ONE LF. No whitespace,
     # signs, leading zeroes, shell arithmetic expressions, links or loose modes.
     plain "$1" || return 1
-    number_metadata=$(/usr/bin/stat -f %u:%Lp "$1") || return 1
+    number_metadata=$(/usr/bin/stat -c %u:%a "$1") || return 1
     case "$number_metadata" in 0:600|501:600) ;; *) return 1;; esac
-    number_size=$(/usr/bin/stat -f %z "$1") || return 1
+    number_size=$(/usr/bin/stat -c %s "$1") || return 1
     case "$number_size" in ''|*[!0-9]*) return 1;; esac
     [ "$number_size" -gt 0 ] && [ "$number_size" -le 16 ] || return 1
     number_value=''
@@ -139,7 +153,7 @@ write_status() {
     safe_session || return 1
     if [ -e "$session/status.plist" ] || [ -L "$session/status.plist" ]; then
         plain "$session/status.plist" || return 1
-        status_owner=$(/usr/bin/stat -f %u "$session/status.plist") || return 1
+        status_owner=$(/usr/bin/stat -c %u "$session/status.plist") || return 1
         case "$status_owner" in 0|501) ;; *) return 1;; esac
     fi
     if [ -e "$work/status.staged.plist" ] || [ -L "$work/status.staged.plist" ]; then
@@ -164,7 +178,7 @@ write_status() {
 <key>userVerified</key><false/>
 </dict></plist>
 EOF
-    [ "$?" -eq 0 ] && /bin/chmod 644 "$work/status.staged.plist" &&
+    [ "$?" -eq 0 ] && /usr/bin/chmod 644 "$work/status.staged.plist" &&
         /bin/mv -f "$work/status.staged.plist" "$session/status.plist"
 }
 restart() {
@@ -185,9 +199,16 @@ atomic_payload() {
     safe_session && safe_target || return 1
     rootfile "$1" || return 1
     dest="$target/$2" tmp="$target/.WatchFix-SleepSync-$2"
-    rootfile "$dest" || return 1
-    if [ -e "$tmp" ] || [ -L "$tmp" ]; then rootfile "$tmp" || return 1; fi
-    /bin/cp "$1" "$tmp" && /bin/chmod "$4" "$tmp" || return 1
+    if ! absent "$dest"; then
+        rootfile "$dest" || return 1
+    else
+        marked backups-verified && was_absent "$2" || return 1
+    fi
+    # A stale staging file is not authority to overwrite arbitrary bytes.
+    if [ -e "$tmp" ] || [ -L "$tmp" ]; then
+        [ "$(hash "$tmp")" = "$3" ] || return 1
+    fi
+    /bin/cp "$1" "$tmp" && /usr/bin/chmod "$4" "$tmp" || return 1
     [ "$(hash "$tmp")" = "$3" ] || return 1
     /bin/mv -f "$tmp" "$dest" && [ "$(hash "$dest")" = "$3" ]
 }
@@ -205,6 +226,7 @@ restore_pair() {
     # unreviewed RootHide transforms and external changes remain fail-closed.
     for check_ext in dylib plist; do
         check_name="$1.$check_ext"
+        if was_absent "$check_name" && absent "$target/$check_name"; then continue; fi
         check_current=$(hash "$target/$check_name") || return 1
         check_original=$(original_hash "$check_name") || return 1
         check_payload=$(payload_hash "$check_name") || return 1
@@ -214,6 +236,15 @@ restore_pair() {
     done
     for ext in dylib plist; do
         name="$1.$ext" permissions=644
+        if was_absent "$name"; then
+            # Quarantine only known session bytes; never delete an unknown file.
+            # The complete pair was checked above before either file is moved.
+            if ! absent "$target/$name"; then
+                absent "$work/$name.retired" || return 1
+                /bin/mv "$target/$name" "$work/$name.retired" || return 1
+            fi
+            continue
+        fi
         [ "$ext" != dylib ] || permissions=755
         expected=$(original_hash "$name") || return 1
         [ "$(hash "$work/backup/$name")" = "$expected" ] || return 1
@@ -222,7 +253,7 @@ restore_pair() {
 }
 pid_for() {
     # Exact executable basename, unique PID, never pgrep a substring or scan all logs.
-    ps_snapshot=$(/bin/ps -axo pid=,comm=) || return 1
+    ps_snapshot=$(/rootfs/bin/ps -axo pid=,comm=) || return 1
     chosen=''
     while read -r number executable remainder; do
         [ "${executable##*/}" = "$1" ] || continue
@@ -239,9 +270,9 @@ read_log() {
     # One session/PID only; cap both bytes and lines before shell pattern matching.
     # An overlong/unsafe log is unknown evidence, never proof of a stale constructor.
     plain "$1" || return 1
-    log_owner=$(/usr/bin/stat -f %u "$1") || return 1
+    log_owner=$(/usr/bin/stat -c %u "$1") || return 1
     case "$log_owner" in 0|501) ;; *) return 1;; esac
-    log_size=$(/usr/bin/stat -f %z "$1") || return 1
+    log_size=$(/usr/bin/stat -c %s "$1") || return 1
     case "$log_size" in ''|*[!0-9]*) return 1;; esac
     [ "$log_size" -le 32768 ] || return 1
     /usr/bin/head -c 32768 "$1" | /usr/bin/head -n 256
@@ -257,16 +288,25 @@ poll_guard() {
     [ "$wall" -lt "$deadline" ] || { failure=deadlineExceeded; return 1; }
 }
 wait_identity() {
-    identity_pid=$(pid_for identityservicesd) || return 1
-    [ "$identity_pid" != "$previous_identity_pid" ] || return 1
-    # New restart must not consume a pre-existing PID log in even this session.
-    identity_log="$session/identity/run-$identity_pid.log"
+    # kickstart returning does not guarantee the replacement PID is visible yet.
+    # Pin the first replacement; never follow another crash/restart for evidence.
+    identity_pid=''
     until_time=$(( $(now) + 60 )) || return 1
     ticks=0
     while [ "$ticks" -lt 60 ]; do
         poll_guard || return 1
-        [ "$(pid_for identityservicesd)" = "$identity_pid" ] || return 1
-        contents=$(read_log "$identity_log") || contents=''
+        observed_identity_pid=$(pid_for identityservicesd) || observed_identity_pid=''
+        if [ -z "$identity_pid" ]; then
+            if [ -n "$observed_identity_pid" ] && [ "$observed_identity_pid" != "$previous_identity_pid" ]; then
+                identity_pid=$observed_identity_pid
+            fi
+        elif [ "$observed_identity_pid" != "$identity_pid" ]; then return 1
+        fi
+        contents=''
+        if [ -n "$identity_pid" ]; then
+            identity_log="$session/identity/run-$identity_pid.log"
+            contents=$(read_log "$identity_log") || contents=''
+        fi
         case "$contents" in *"$1"*) return 0;; esac
         [ "$(now)" -lt "$until_time" ] || return 1
         /bin/sleep 1 || return 1
@@ -278,7 +318,7 @@ revoke() {
     safe_session || return 1
     if [ -e "$1" ] || [ -L "$1" ]; then
         plain "$1" || return 1
-        revoke_owner=$(/usr/bin/stat -f %u "$1") || return 1
+        revoke_owner=$(/usr/bin/stat -c %u "$1") || return 1
         case "$revoke_owner" in 0|501) ;; *) return 1;; esac
         [ ! -e "$2" ] && [ ! -L "$2" ] || return 1
         /bin/mv "$1" "$2" || return 1
@@ -329,14 +369,25 @@ cleanup() {
         fi
     fi
     for name in "$hello.dylib" "$hello.plist" "$focus.dylib" "$focus.plist"; do
-        [ "$(hash "$target/$name")" = "$(original_hash "$name")" ] || cleanup_ok=false
+        baseline_matches "$name" || cleanup_ok=false
     done
     [ "$cleanup_ok" = true ] || return 1
     clean=true
 }
+retire_job() {
+    # Stop future boot-time launches without killing the running cleanup worker.
+    # launchd may retain an idle registration; no active grant remains after close.
+    job="/Library/LaunchDaemons/cn.fkj233.watchfix.sleepsync.$uuid.plist"
+    absent "$job" && return 0
+    secure_rootdir /Library/LaunchDaemons && rootfile "$job" || return 1
+    if ! absent "$work/launchd-job.retired.plist"; then
+        [ "$(hash "$job")" = "$(hash "$work/launchd-job.retired.plist")" ] || return 1
+    fi
+    /bin/mv -f "$job" "$work/launchd-job.retired.plist"
+}
 finish() {
     trap '' HUP INT TERM
-    if cleanup; then
+    if cleanup && retire_job; then
         if [ "$recovering" = true ]; then
             write_status failed failed || :
         elif [ "$cancelled" = true ]; then
@@ -357,7 +408,7 @@ finish() {
 
 # No writable operation precedes validation of the mobile session and payload roots.
 mobile_dir "$session" && mobile_dir "$session/identity" && mobile_dir "$session/focus" || exit 78
-session_inode=$(/usr/bin/stat -f %d:%i "$session") || exit 78
+session_inode=$(/usr/bin/stat -c %d:%i "$session") || exit 78
 session_tree && safe_target && safe_runtime || exit 78
 if /bin/mkdir "$work" 2>/dev/null; then
     safe_session || exit 78
@@ -386,15 +437,26 @@ fi
 
 prepare() {
     write_status preparing preparing || return 1
-    # Validate ALL baseline and payload bytes before even backing up or installing.
+    # Each legacy pair is either wholly absent or the exact audited baseline.
+    # Missing one half is not a clean installation and must not be guessed away.
+    for stem in "$hello" "$focus"; do
+        if absent "$target/$stem.dylib" && absent "$target/$stem.plist"; then continue; fi
+        for ext in dylib plist; do
+            [ "$(hash "$target/$stem.$ext")" = "$(original_hash "$stem.$ext")" ] || return 1
+        done
+    done
+    # Validate ALL payload bytes before even backing up or installing.
     for name in "$hello.dylib" "$hello.plist" "$focus.dylib" "$focus.plist"; do
-        [ "$(hash "$target/$name")" = "$(original_hash "$name")" ] || return 1
         expected=$(payload_hash "$name") || return 1
         expected_postload=$(postload_hash "$name") || return 1
         [ "$(hash "$runtime/$name")" = "$expected" ] || return 1
     done
     mark backup || return 1
     for name in "$hello.dylib" "$hello.plist" "$focus.dylib" "$focus.plist"; do
+        if absent "$target/$name"; then
+            mark "backup/$name.absent" || return 1
+            continue
+        fi
         /bin/cp "$target/$name" "$work/backup/$name" || return 1
         [ "$(hash "$work/backup/$name")" = "$(original_hash "$name")" ] || return 1
     done
@@ -414,7 +476,7 @@ run_session() {
     wait_identity 'event=neutral-result seq=1 depth=1 count=1 route=2 detail=7 returned=1' || return 1
     safe_session || return 1
     printf '%s\n' "$uuid" > "$work/identity-enabled.staged" || return 1
-    /bin/chmod 600 "$work/identity-enabled.staged" || return 1
+    /usr/bin/chmod 600 "$work/identity-enabled.staged" || return 1
     # Root-owned marker; native gate tests existence, never a mobile-only UID check.
     /bin/mv "$work/identity-enabled.staged" "$session/identity-enabled" || return 1
     restart identity-candidate com.apple.identityservicesd || return 1
@@ -438,12 +500,19 @@ run_session() {
 </dict></plist>
 EOF
     [ "$?" -eq 0 ] && /usr/sbin/chown mobile:mobile "$work/policy-grant.staged.plist" &&
-        /bin/chmod 600 "$work/policy-grant.staged.plist" || return 1
+        /usr/bin/chmod 600 "$work/policy-grant.staged.plist" || return 1
     /bin/mv "$work/policy-grant.staged.plist" "$session/focus/policy-grant.plist" || return 1
     install_pair focus "$focus" || return 1
     restart focus-active com.apple.donotdisturbd || return 1
-    focus_pid=$(pid_for donotdisturbd) || return 1
-    [ "$focus_pid" != "$previous_focus_pid" ] || return 1
+    focus_pid='' pid_ticks=0
+    while [ "$pid_ticks" -lt 10 ]; do
+        poll_guard || return 1
+        focus_pid=$(pid_for donotdisturbd) || focus_pid=''
+        if [ -n "$focus_pid" ] && [ "$focus_pid" != "$previous_focus_pid" ]; then break; fi
+        /bin/sleep 1 || return 1
+        pid_ticks=$((pid_ticks + 1))
+    done
+    [ -n "$focus_pid" ] && [ "$focus_pid" != "$previous_focus_pid" ] || return 1
     write_status waitingForSave waitingForSave || return 1
     ticks=0 source_at=0 ack_at=0
     while [ "$ticks" -lt 180 ]; do

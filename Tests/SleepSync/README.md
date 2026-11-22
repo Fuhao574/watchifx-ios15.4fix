@@ -9,6 +9,8 @@ python3 Tests/SleepSync/test_sleep_sync_coordinator.py
 python3 Tests/SleepSync/test_sleep_module_session.py
 python3 Tests/SleepSync/test_root_launcher.py
 python3 Tests/SleepSync/test_postload_digest.py
+python3 Tests/SleepSync/test_log_directory_owner.py
+python3 Tests/SleepSync/test_no_ssh_dependency.py
 # After building Runtime/Focus and Runtime/Identity locally:
 python3 Tests/SleepSync/test_runtime_staging.py
 xcrun swiftc -warnings-as-errors App/Models/SleepSync.swift Tests/SleepSync/test_sleep_sync_state.swift -o reports/sleep-sync-state-test
@@ -22,6 +24,12 @@ reports/sleep-sync-state-test
   do not chown files or execute root commands.
 - Swift tests check status projection: ACK is not user-verified success, and an
   unresolved cleanup prevents starting another session.
+- Clean-baseline fixtures verify that the module can run without legacy experiment
+  files, then quarantine only exact per-session bytes rather than leave them installed.
+- Log tests compile both actual production headers. Only effective UID and regular
+  file fstat UID are modeled for the root-daemon/mobile-directory case; no host chown.
+- No-SSH tests scan the module, App entry path and package dependencies. They assert
+  a local launch chain, not real-device acceptance after uninstalling OpenSSH.
 
 Generated artifacts stay under ignored `reports/`. No captured user policy,
 device diagnostics or firmware is required or included.

@@ -27,12 +27,12 @@
   "Runtime/Focus/BoundedLog.h": {
     "source": "WatchFix-research/research/focus-sleep-once3/BoundedLog.h",
     "source_sha256": "6911362f5f030f401bc37544ef92c9687932078f654c8e01f8f83b0f7a36a686",
-    "sha256": "6911362f5f030f401bc37544ef92c9687932078f654c8e01f8f83b0f7a36a686"
+    "sha256": "2aa0ec224d0c123f6fef6869508af551eda72e8a18bfe164e0ec545da6d6347f"
   },
   "Runtime/Focus/PreflightSupport.mm": {
     "source": "WatchFix-research/research/focus-sleep-once3/PreflightSupport.mm",
     "source_sha256": "2b1acce057413d938f85efe7bcb09a40a1c5c241e800ae8b1a3e366701f2a8aa",
-    "sha256": "6e33c0ba67084666ad414f6945b794ac853ed90663bd35512ccd8f115f5f38ec"
+    "sha256": "08859cb3f6fe5c29c36f939ee9d65fcbce69a08dedc357d08d2ca2b13a85b572"
   },
   "Runtime/Focus/Makefile": {
     "source": "WatchFix-research/research/focus-sleep-once3/Makefile",
@@ -66,12 +66,12 @@
   "Runtime/Identity/IdentityLog.h": {
     "source": "WatchFix-research/research/hello-identity-wireless1/IdentityLog.h",
     "source_sha256": "32d524f39ddf0e1b3ccb14c9b6a67bdcbb2af6297db5671885f67e7fef7f2d7b",
-    "sha256": "32d524f39ddf0e1b3ccb14c9b6a67bdcbb2af6297db5671885f67e7fef7f2d7b"
+    "sha256": "95e6dafa80de2db3acad7d4344ab5c7a0ef9b97ee7fb3048be1f0bc0f140c9cb"
   },
   "Runtime/Identity/BoundedLog.h": {
     "source": "WatchFix-research/research/hello-identity-wireless1/BoundedLog.h",
     "source_sha256": "6911362f5f030f401bc37544ef92c9687932078f654c8e01f8f83b0f7a36a686",
-    "sha256": "6911362f5f030f401bc37544ef92c9687932078f654c8e01f8f83b0f7a36a686"
+    "sha256": "2aa0ec224d0c123f6fef6869508af551eda72e8a18bfe164e0ec545da6d6347f"
   },
   "Runtime/Identity/Makefile": {
     "source": "WatchFix-research/research/hello-identity-wireless1/Makefile",

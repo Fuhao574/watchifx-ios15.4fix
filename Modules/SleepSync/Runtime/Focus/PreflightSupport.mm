@@ -20,7 +20,7 @@ static void OpenDiagnostic(void) {
         // The directory must be explicitly prepared for this experiment. Do not
         // create it, alter its permissions, overwrite logs, or fall back to /tmp.
         const char *resolved=WFModuleDirectory("focus");
-        bool opened=resolved && output.Open(resolved);
+        bool opened=resolved && output.Open(resolved,501);
         syslog(LOG_NOTICE,"[WFSleepModule1] diagnostic-open=%d pid=%d",opened,getpid());
         if(opened) output.Append("[WFSleepModule1] diagnostic-open=1 policy-only=1 readonlyBuild=0 controlUpgrade=NO");
     });

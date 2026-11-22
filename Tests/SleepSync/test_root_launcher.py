@@ -22,7 +22,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "Modules/SleepSync/RootLauncher.sh"
 # Fail closed if new production commands/paths need an additional safety review.
-REVIEWED_SHA256 = "47cfabd2c83d0990c261c94b659fa3cc71a0eef303e94d2482d1388aa5abd24d"
+REVIEWED_SHA256 = "aff4f905b3d354931cc566042a34eb200d575a208b312e3ad455d89c00338322"
 UUID = "12345678-1234-1234-1234-123456789ABC"
 LABEL = "cn.fkj233.watchfix.sleepsync." + UUID
 COMMANDS = ("id", "stat", "cat", "chmod", "mv", "launchctl")
@@ -51,14 +51,20 @@ try:
         assert args == ["-u"]
         print(state.get("uid", 0))
     elif name == "stat":
-        assert len(args) == 3 and args[0] == "-f"
+        assert len(args) == 3 and args[0] in ("-c", "-f")
         p = local(args[2]); info = p.lstat()
         key = str(p.relative_to(fs))
         owner = state.get("owners", {}).get(key, 501 if key.startswith("var/mobile/") else 0)
         mode = "%o" % stat.S_IMODE(info.st_mode)
-        print({"%u": str(owner), "%Lp": mode,
-               "%u:%l": "%s:%s" % (owner, info.st_nlink),
-               "%u:%Lp": "%s:%s" % (owner, mode)}[args[1]])
+        values = {"%u": str(owner), "%h": str(info.st_nlink), "%a": mode,
+                  "%u:%h": "%s:%s" % (owner, info.st_nlink),
+                  "%u:%a": "%s:%s" % (owner, mode),
+                  "%d:%i": "%s:%s" % (info.st_dev, info.st_ino), "%s": str(info.st_size)}
+        # Keep BSD aliases for reviewed historical sources; neither invokes host stat.
+        values.update({"%l": values["%h"], "%Lp": values["%a"],
+                       "%u:%l": values["%u:%h"], "%u:%Lp": values["%u:%a"],
+                       "%z": values["%s"]})
+        print(values[args[1]])
     elif name == "cat":
         assert not args
         sys.stdout.buffer.write(sys.stdin.buffer.read())
@@ -195,6 +201,16 @@ class RootLauncherTests(unittest.TestCase):
             with self.subTest(operation=operation):
                 self.assert_rejected_without_writes(operation, UUID, expected=64)
         self.assertTrue(all(e["command"] == "id" for e in self.fixture.events()))
+
+    def test_existing_library_775_does_not_relax_job_directory(self):
+        fixture = self.fixture
+        (fixture.fs / 'Library').chmod(0o775)
+        result = fixture.run('start', UUID)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_fixed_job()
+        (fixture.root / 'commands.jsonl').write_text('')
+        fixture.jobs.chmod(0o775)
+        self.assert_rejected_without_writes('start', UUID)
 
     def test_invalid_uuid_rejected_before_writes(self):
         for identifier in ("../escape", UUID.lower(), "Z" + UUID[1:], UUID + "/x"):

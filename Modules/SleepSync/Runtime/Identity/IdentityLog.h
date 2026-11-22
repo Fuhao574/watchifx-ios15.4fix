@@ -53,7 +53,9 @@ public:
     // path is a directory, not a filename. No mkdir, retry, overwrite or fallback.
     bool Open(const char *path) noexcept {
         try {
-            return log_.Open(path);
+            // ModuleSession validated a mobile-owned 0700 session directory.
+            // The log itself must still be exclusively created by this daemon.
+            return log_.Open(path, 501);
         } catch (...) {
             return false;
         }

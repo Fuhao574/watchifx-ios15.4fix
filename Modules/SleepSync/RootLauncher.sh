@@ -17,14 +17,19 @@ runtime=/Applications/WatchFix.app/SleepSyncRuntime
 jobs=/Library/LaunchDaemons
 for path in /Applications /Applications/WatchFix.app "$runtime" /Library "$jobs"; do
  test -d "$path" && test ! -L "$path"
- test "$(stat -f %u "$path")" = 0
- case "$(stat -f %Lp "$path")" in 755|700|750|555) ;; *) exit 78;; esac
+ test "$(stat -c %u "$path")" = 0
+ directory_mode=$(stat -c %a "$path")
+ if [ "$path" = /Library ] && [ "$directory_mode" = 775 ]; then
+  : # Existing shared ancestor; the root-only LaunchDaemons child is checked below.
+ else
+  case "$directory_mode" in 755|700|750|555) ;; *) exit 78;; esac
+ fi
 done
 test -f "$runtime/SleepSyncCoordinator.sh" && test ! -L "$runtime/SleepSyncCoordinator.sh"
-test "$(stat -f %u:%l "$runtime/SleepSyncCoordinator.sh")" = 0:1
+test "$(stat -c %u:%h "$runtime/SleepSyncCoordinator.sh")" = 0:1
 for path in "$base" "$base/Sessions" "$session" "$session/focus" "$session/identity"; do
  test -d "$path" && test ! -L "$path"
- test "$(stat -f %u:%Lp "$path")" = 501:700
+ test "$(stat -c %u:%a "$path")" = 501:700
 done
 label="cn.fkj233.watchfix.sleepsync.$identifier"
 job="$jobs/$label.plist"
@@ -43,7 +48,7 @@ fi
 # The root-consumed plist is generated in a ROOT-owned directory, never copied
 # from the mobile session's request or allowed to override ProgramArguments.
 if [ -e "$job" ] || [ -L "$job" ]; then
- test -f "$job" && test ! -L "$job" && test "$(stat -f %u:%l "$job")" = 0:1 || exit 78
+ test -f "$job" && test ! -L "$job" && test "$(stat -c %u:%h "$job")" = 0:1 || exit 78
 else
  temporary="$jobs/.$label.new"
  test ! -e "$temporary" && test ! -L "$temporary"
