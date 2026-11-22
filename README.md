@@ -6,33 +6,46 @@
 
 </div>
 
-**Only support WatchOS 26 below**
+本项目 fork 自 **[577fkj/WatchFix](https://github.com/577fkj/WatchFix)**，在原项目基础上针对
+**iOS 15.4** 进行修复与扩展。原项目及原作者的贡献与署名保留，本仓库不是上游官方版本。
 
-## iOS 15.4 睡眠配置同步模块
+## 本分支的主要改动
 
-本仓库包含 WatchFix 源码及正在整合的睡眠配置同步模块，入口为：
+- **修复 iOS 15.4 的信息自动卸载模块**：修正 AppsSupport 中的 Messages（信息）自动卸载修复逻辑。
+- **新增睡眠模式同步模块**：在现有 WatchFix 功能列表中手动同步一次睡眠专注模式配置，
+  保留 App／联系人例外，完成后撤回临时组件。
+- 保留正常 AppsSupport、Messages 和 PairingCompatibility 等已有功能。
 
-**WatchFix → 功能 → 睡眠配置同步 → 同步操作**。
+## 睡眠模式同步
 
-不是独立 App，不增加首页独立入口。普通睡眠通知与蜂窝来电例外已获得一次研究性同步的用户验证；
-App 内可重复手动同步的协调／恢复流程仍在开发验收，**目前执行禁用，不是可用发布版**。
-微信实时来电在非睡眠状态也不提醒，作为独立通话传递问题，不以放行普通微信通知绕过。
+入口：**WatchFix → 功能 → 睡眠配置同步 → 设置**。
 
-模块代码与限制见 [`Modules/SleepSync/README.md`](Modules/SleepSync/README.md)。
-本机测试源码及运行方式见 [`Tests/SleepSync/README.md`](Tests/SleepSync/README.md)。
-临时身份、单次附加更新、真实 ACK 和恢复分别记录；ACK 不等于全部规则已经保存。
-保留正常 AppsSupport／Messages 和 PairingCompatibility 行为，不伪造 ACK 或 initial-sync。
+1. 点击开始并确认，等待页面提示保存设置。
+2. 记下系统“睡眠”专注模式中“隐藏通知标记”的原值，按提示切换一次，再返回 WatchFix。
+3. 查看各阶段独立进度条，等待确认与清理完成；随后恢复该设置原值，并测试手表上的睡眠功能。
 
+功能卡片提供 **设置／删除**；删除后可重新安装模块。运行中的会话需先完成恢复。
+模块不依赖 SSH 或电脑在线，不需要为正常使用保留 OpenSSH。
+
+### 验证范围与限制
+
+- 已在 **iOS 15.4（19E241）／watchOS 11.5（22T572）** 组合完成 App 内单次同步、
+  真实 ACK 匹配与自动清理，用户已确认睡眠功能测试通过。
+- 目前只支持手动单次 Sleep 配置同步，不是持续自动同步，也不覆盖所有专注模式。
+- 同步会临时调整身份并重启相关服务，连接可能短暂中断；不会自动重复发送。
+- ACK 是协议确认，不等于所有配置在手表上的实际行为均已验证。其他系统／设备组合仍待测试。
+- 微信实时来电转发是独立问题，不属于此模块的修复范围。
+
+实现与详细限制见 [`Modules/SleepSync/README.md`](Modules/SleepSync/README.md)，
+本机测试见 [`Tests/SleepSync/README.md`](Tests/SleepSync/README.md)。
 源码仓库不包含设备诊断、私人配置／例外、固件、SSH 凭据或研究构建产物。
 
-The stability still needs to be tested
-
-## Fix feature
+## 上游已有功能
 
 - Fix Message auto uninstall
 - Ping My Watch
 
-### No test
+以下功能沿用上游；本分支未逐项重新验收：
 
 - Fix Pairing
 - System Update
@@ -44,15 +57,13 @@ The stability still needs to be tested
 - Media Sync Support
 - Maps Support
 
-## Unimplemented feature
+### 尚未实现
 
 - Health Support
 
-## Tips
+其他功能仍可能存在兼容性问题。本文中的 iOS 15.4 修复和睡眠同步验证结果，不代表上列功能在所有环境中均可用。
 
-The other functions of the plugin are still not perfect at present. I am not familiar with iOS development, and I don't know how to deal with many problems. If anyone is willing to help with development, please contact me, and I can provide relevant materials.
-
-## Sponsor
+## 上游作者赞助链接
 
 - [Patreon](https://patreon.com/577FKJ)
 - [爱发电](https://afdian.com/a/577fkj)
@@ -68,9 +79,15 @@ The other functions of the plugin are still not perfect at present. I am not fam
 1. Install [theos](https://github.com/roothide/theos)
 2. Run `make package`
 
-睡眠模块本机构建预览使用 `WATCHFIX_WITH_SLEEP_SYNC=1 make package`。
-保持 `enabledForDevice=false`，不要手改开关绕过恢复验收。构建不等于安装授权，不运行 `make do`。
+默认构建已包含睡眠模块，但运行清单保持 `enabledForDevice=false`，不是通用设备可执行发行包。
+维护者可按模块文档显式生成 RootHide 品牌绑定的测试候选；不要手改清单绕过设备绑定。
+构建不等于安装或开始同步，`make package` 不会连接手机。
 
 ## Credits
 
+- **[577fkj/WatchFix](https://github.com/577fkj/WatchFix)**：上游项目与原始功能实现。
 - **[WatchPair11](https://github.com/plokijuter/WatchPair11)**: Multiple repair references
+
+## License
+
+遵循上游的 [GPL-3.0 许可证](LICENSE)。
