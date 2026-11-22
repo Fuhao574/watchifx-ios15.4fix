@@ -8,6 +8,8 @@
 #import <unistd.h>
 
 #include "utils.h"
+#include "PhotoResponseContext.h"
+#include "PhotoDiagnostics.h"
 
 @interface IDSService : NSObject
 - (void)addDelegate:(id)delegate queue:(dispatch_queue_t)queue;
@@ -30,12 +32,11 @@
 - (instancetype)initWithProtobufData:(NSData *)data type:(NSUInteger)type isResponse:(BOOL)isResponse;
 - (NSData *)data;
 - (NSUInteger)type;
-- (id)outgoingResponseIdentifier;
+- (id)context;
 @end
 
 @interface NPTOTemporaryFile : NSObject
 - (NSURL *)URL;
-- (NSDictionary *)metadata;
 @end
 
 @interface NMSMessageCenter : NSObject
@@ -47,6 +48,12 @@ incomingResourceAtURL:(NSURL *)incomingURL
         metadata:(NSDictionary *)metadata
           fromID:(id)fromID
          context:(id)context;
+@end
+
+// Incoming NMS file wrapper is distinct from an exported NPTOTemporaryFile.
+@protocol WFPhotoIncomingFile <NSObject>
+- (NSURL *)URL;
+- (NSDictionary *)metadata;
 @end
 
 @interface NPTOCompanionSyncDeviceController : NSObject
@@ -90,7 +97,10 @@ incomingResourceAtURL:(NSURL *)incomingURL
 - (BOOL)readBOOL;
 - (BOOL)hasMoreData;
 - (BOOL)hasError;
+- (BOOL)skipValueWithTag:(uint32_t)tag type:(uint8_t)type;
 @end
+
+#include "PhotoAssetRequest.h"
 
 @interface PHImportController : NSObject
 + (instancetype)sharedInstance;
@@ -110,7 +120,7 @@ incomingResourceAtURL:(NSURL *)incomingURL
 
 @interface PHAsset (WatchFixPhotoLibrarySupport)
 + (NSString *)localIdentifierWithUUID:(NSUUID *)uuid;
-- (void)npto_exportForDevice:(id)device completionHandler:(void (^)(NPTOTemporaryFile *temporaryFile))completionHandler;
+- (void)npto_exportForDevice:(id)device completionHandler:(void (^)(NPTOTemporaryFile *temporaryFile, NSDictionary *metadata, NSError *error))completionHandler;
 @end
 
 @interface WFIDSDevice : NSObject
@@ -193,6 +203,7 @@ static BOOL WatchFixSyncControllerIsFor(id controller) {
 @property(nonatomic, weak) IDSService *service;
 @property(nonatomic, weak) id idsDevice;
 - (void)sendPhotoSyncSignalIfNeeded;
+- (void)preparePhotoSyncRequest;
 - (void)cancelPendingPhotoTransferOperations;
 @end
 
@@ -265,7 +276,7 @@ static BOOL WatchFixSyncControllerIsFor(id controller) {
     [self.sendAssetsQueue waitUntilAllOperationsAreFinished];
 }
 
-- (void)sendPhotoSyncSignalIfNeeded {
+- (void)preparePhotoSyncRequest {
     if (!self.syncRequest) {
         self.syncRequest = [[self photoSyncContentController] composeSyncRequest];
         NSData *requestData = [self.syncRequest data];
@@ -281,6 +292,11 @@ static BOOL WatchFixSyncControllerIsFor(id controller) {
         }
     }
 
+    WFPhotoEvent("request-ready",self.syncRequest!=nil);
+}
+
+- (void)sendPhotoSyncSignalIfNeeded {
+    [self preparePhotoSyncRequest];
     if (![[self.syncRequest library] respondsToSelector:@selector(class)]) {
         return;
     }
@@ -318,12 +334,13 @@ static BOOL WatchFixSyncControllerIsFor(id controller) {
     NSSet *destinations = [NSSet setWithObject:destinationID];
     id identifier = nil;
     NSError *error = nil;
-    [self.service sendProtobuf:protobuf
+    BOOL accepted = [self.service sendProtobuf:protobuf
                 toDestinations:destinations
                       priority:kWFSendPriorityHigh
                        options:options
                     identifier:&identifier
                          error:&error];
+    WFPhotoEvent("signal-accepted",accepted&&!error);
     if (error) {
         Log(@"failed to send photo sync signal: %@", error.localizedDescription);
     }
@@ -333,31 +350,19 @@ static BOOL WatchFixSyncControllerIsFor(id controller) {
          account:(__unused id)account
 incomingUnhandledProtobuf:(IDSProtobuf *)protobuf
           fromID:(__unused id)fromID
-         context:(__unused id)context {
+          context:(id)context {
     NSUInteger protobufType = [protobuf type];
+    WFPhotoEvent("incoming-type",protobufType);
     if (protobufType == kWFPhotoSyncAssetRequestProtobufType) {
         NSData *payload = [protobuf data];
         PBDataReader *reader = [[NSClassFromString(@"PBDataReader") alloc] initWithData:payload];
-        NSData *requestedUUIDBytes = nil;
+        NSData *requestedUUIDBytes = WFPhotoReadAssetUUID(reader);
 
-        while ([reader hasMoreData] && ![reader hasError]) {
-            uint32_t tag = 0;
-            uint8_t type = 0;
-            [reader readTag:&tag type:&type];
-
-            if (tag == 1) {
-                requestedUUIDBytes = [reader readData];
-            } else if (tag == 2) {
-                [reader readBOOL];
-            } else {
-                PBReaderSkipValueWithTag(reader, tag, type);
-            }
-        }
-
-        if (![reader hasError] && requestedUUIDBytes.length == 16) {
+        if (requestedUUIDBytes) {
             NSUUID *requestedUUID =
                 [[NSUUID alloc] initWithUUIDBytes:(const unsigned char *)requestedUUIDBytes.bytes];
-            id outgoingResponseIdentifier = [protobuf outgoingResponseIdentifier];
+            id outgoingResponseIdentifier = WFPhotoOutgoingResponseIdentifier(context, protobuf);
+            WFPhotoEvent("asset-response-context",outgoingResponseIdentifier!=nil);
 
             if (!self.exportAssetsQueue) {
                 self.exportAssetsQueue = [[NSOperationQueue alloc] init];
@@ -375,16 +380,23 @@ incomingUnhandledProtobuf:(IDSProtobuf *)protobuf
                 id contentController = [strongSelf photoSyncContentController];
                 NSString *localIdentifier = [PHAsset localIdentifierWithUUID:requestedUUID];
                 PHAsset *asset = [contentController assetForLocalIdentifier:localIdentifier];
+                WFPhotoEvent("asset-found",asset!=nil);
                 id pairedDevice = WatchFixPairedDeviceForIDSDevice(strongSelf.idsDevice);
                 if (!asset || !pairedDevice) {
                     return;
                 }
 
-                [asset npto_exportForDevice:pairedDevice completionHandler:^(NPTOTemporaryFile *temporaryFile) {
+                [asset npto_exportForDevice:pairedDevice completionHandler:^(NPTOTemporaryFile *temporaryFile, NSDictionary *exportMetadata, NSError *exportError) {
+                    WFPhotoEvent("export-result",temporaryFile!=nil&&!exportError);
                     __strong __typeof__(weakSelf) innerSelf = weakSelf;
-                    if (!innerSelf || !temporaryFile) {
+                    if (!innerSelf || !temporaryFile || exportError ||
+                        ![exportMetadata isKindOfClass:[NSDictionary class]]) {
                         return;
                     }
+                    // Native iOS15.4 supplies metadata separately; the temporary
+                    // file has URL only. Capture it through the queued send so
+                    // native deallocation cannot unlink the export too early.
+                    NSDictionary *metadata = [exportMetadata copy];
 
                     if (!innerSelf.sendAssetsQueue) {
                         innerSelf.sendAssetsQueue = [[NSOperationQueue alloc] init];
@@ -411,17 +423,18 @@ incomingUnhandledProtobuf:(IDSProtobuf *)protobuf
 
                         NSSet *destinations = [NSSet setWithObject:destinationID];
                         NSURL *resourceURL = [temporaryFile URL];
-                        NSDictionary *metadata = [temporaryFile metadata];
+                        if (![resourceURL isKindOfClass:[NSURL class]] || !resourceURL.isFileURL) return;
                         id identifier = nil;
                         NSError *error = nil;
 
-                        [sendSelf.service sendResourceAtURL:resourceURL
+                        BOOL accepted = [sendSelf.service sendResourceAtURL:resourceURL
                                                    metadata:metadata
                                              toDestinations:destinations
                                                    priority:kWFSendPriorityHigh
                                                     options:options
                                                  identifier:&identifier
-                                                      error:&error];
+                                                       error:&error];
+                        WFPhotoEvent("resource-accepted",accepted&&!error);
 
                         if (error) {
                             Log(@"failed to send exported photo resource: %@",
@@ -440,10 +453,10 @@ incomingUnhandledProtobuf:(IDSProtobuf *)protobuf
 
     if (self.syncQueue) {
         dispatch_sync(self.syncQueue, ^{
-            [self sendPhotoSyncSignalIfNeeded];
+            [self preparePhotoSyncRequest];
         });
     } else {
-        [self sendPhotoSyncSignalIfNeeded];
+        [self preparePhotoSyncRequest];
     }
 
     id library = [self.syncRequest library];
@@ -464,7 +477,8 @@ incomingUnhandledProtobuf:(IDSProtobuf *)protobuf
 
     NSMutableDictionary *options = [NSMutableDictionary dictionaryWithObject:@60
                                                                       forKey:IDSSendMessageOptionTimeoutKey];
-    id outgoingResponseIdentifier = [protobuf outgoingResponseIdentifier];
+    id outgoingResponseIdentifier = WFPhotoOutgoingResponseIdentifier(context, protobuf);
+    WFPhotoEvent("snapshot-response-context",outgoingResponseIdentifier!=nil);
     if (outgoingResponseIdentifier) {
         options[IDSSendMessageOptionPeerResponseIdentifierKey] = outgoingResponseIdentifier;
     }
@@ -487,18 +501,20 @@ incomingUnhandledProtobuf:(IDSProtobuf *)protobuf
     NSSet *destinations = [NSSet setWithObject:destinationID];
     id identifier = nil;
     NSError *error = nil;
-    [self.service sendProtobuf:response
+    BOOL accepted = [self.service sendProtobuf:response
                 toDestinations:destinations
                       priority:kWFSendPriorityHigh
                        options:options
                     identifier:&identifier
                          error:&error];
+    WFPhotoEvent("snapshot-accepted",accepted&&!error);
     if (error) {
         Log(@"failed to send photo sync snapshot response: %@", error.localizedDescription);
     }
 }
 
 - (void)controllerDidInvalidateContent:(__unused id)contentController {
+    WFPhotoEvent("content-invalidated",1);
     if (!self.syncQueue) {
         return;
     }
@@ -580,7 +596,7 @@ incomingResourceAtURL:(NSURL *)incomingURL
 }
 
 %new
-- (void)wf_pls_handleJupiterInboundFile:(NPTOTemporaryFile *)temporaryFile {
+- (void)wf_pls_handleJupiterInboundFile:(id<WFPhotoIncomingFile>)temporaryFile {
     NSURL *incomingURL = [temporaryFile URL];
     if (!incomingURL) {
         return;
@@ -657,6 +673,7 @@ incomingResourceAtURL:(NSURL *)incomingURL
 }
 
 - (void)_beginSync {
+    WFPhotoEvent("begin-sync",1);
     if (WatchFixSyncControllerIsFor(self)) {
         PLSSyncDeviceController *helper =
             objc_getAssociatedObject(self, &kWFControllerAssociationKey);
@@ -673,6 +690,7 @@ incomingResourceAtURL:(NSURL *)incomingURL
 }
 
 - (void)_endSync {
+    WFPhotoEvent("end-sync",1);
     if (WatchFixSyncControllerIsFor(self)) {
         PLSSyncDeviceController *helper =
             objc_getAssociatedObject(self, &kWFControllerAssociationKey);
@@ -716,4 +734,5 @@ incomingResourceAtURL:(NSURL *)incomingURL
     }
 
     %init(PhotoLibrarySupportLegacySync);
+    WFPhotoEvent("legacy-hooks-ready",1);
 }

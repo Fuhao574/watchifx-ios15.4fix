@@ -14,6 +14,8 @@
 - **修复 iOS 15.4 的信息自动卸载模块**：修正 AppsSupport 中的 Messages（信息）自动卸载修复逻辑。
 - **新增睡眠模式同步模块**：在现有 WatchFix 功能列表中手动同步一次睡眠专注模式配置，
   保留 App／联系人例外，完成后撤回临时组件。
+- **修复 iOS 15.4 的照片图库支持**：修正消息响应 context、快照回复的重复握手及照片导出回调，
+  已在本轮设备上观察到资源发送，并由用户确认手表相簿内出现照片。
 - 保留正常 AppsSupport、Messages 和 PairingCompatibility 等已有功能。
 
 ## 睡眠模式同步
@@ -40,6 +42,15 @@
 本机测试见 [`Tests/SleepSync/README.md`](Tests/SleepSync/README.md)。
 源码仓库不包含设备诊断、私人配置／例外、固件、SSH 凭据或研究构建产物。
 
+## 照片图库支持
+
+在 **iOS 15.4／watchOS 11.5** 组合上，本轮修补已走通快照、照片请求、导出与资源发送，
+用户确认手表相簿内已出现照片。相簿名先出现、内容稍后填充是不同阶段，不能仅凭空相簿
+认定已经传输完成或失败。首次同步可能需要等待系统调度，避免反复重启服务或切换同步设置。
+
+目前确认的是本轮照片显示，不保证整个相册全部同步、后续增删、所有媒体类型或其他系统组合。
+主机回归测试见 [`Tests/PhotoLibrarySupport/README.md`](Tests/PhotoLibrarySupport/README.md)。
+
 ## 上游已有功能
 
 - Fix Message auto uninstall
@@ -53,7 +64,6 @@
 - Lockdown Mode Support
 - Watch Face Support
 - Layout Support
-- Photo Sync Support
 - Media Sync Support
 - Maps Support
 
