@@ -5,6 +5,7 @@ import os
 import plistlib
 import subprocess
 import tempfile
+import shutil
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -38,6 +39,28 @@ class RuntimeStagingTests(unittest.TestCase):
     def test_test_candidate_requires_explicit_brand(self):
         result, _ = self.stage(candidate=True)
         self.assertNotEqual(result.returncode, 0)
+
+    def test_stale_local_artifact_is_rejected_instead_of_packaging_it(self):
+        with tempfile.TemporaryDirectory(prefix='stale-stage-', dir=ROOT/'reports') as tmp:
+            module = Path(tmp)/'Modules/SleepSync'
+            module.mkdir(parents=True)
+            for name in ('stage_runtime.py', 'postload_digest.py', 'ModuleSession.h',
+                         'RootLauncher.sh', 'SleepSyncCoordinator.sh'):
+                shutil.copyfile(MODULE/name, module/name)
+            for component, stem in (('Focus', 'FocusConfigCompatibility'), ('Identity', 'HelloReadOnlyObserver')):
+                source = MODULE/'Runtime'/component
+                target = module/'Runtime'/component
+                (target/'.theos/obj').mkdir(parents=True)
+                for path in source.iterdir():
+                    if path.is_file() and path.suffix in ('.h', '.mm', '.xm', '.plist'):
+                        shutil.copyfile(path, target/path.name)
+                binary = target/'.theos/obj'/('WatchFix_'+stem+'.dylib')
+                shutil.copyfile(source/'.theos/obj'/binary.name, binary)
+                os.utime(binary, (1, 1))
+            result = subprocess.run(['python3', str(module/'stage_runtime.py'), str(Path(tmp)/'out')],
+                                    capture_output=True, text=True, timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('Stale or missing runtime artifact', result.stderr)
 
     def test_brand_bound_candidate_hashes(self):
         result, target = self.stage(candidate=True, brand="123456789ABCDEF0")

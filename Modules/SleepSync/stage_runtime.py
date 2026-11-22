@@ -1,4 +1,4 @@
-"""Bundle fixed module runtime; never installs or enables device execution."""
+"""Bundle fixed module runtime; never installs or runs a device operation."""
 from pathlib import Path
 import hashlib,json,plistlib,shutil,sys,subprocess,os
 from postload_digest import allowed_hashes
@@ -16,6 +16,16 @@ files={
  'RootLauncher.sh':ROOT/'RootLauncher.sh',
 }
 hashes={}
+# Recursive Theos builds otherwise inherit the top-level object directory. Never
+# package an old component-local binary just because its own hashes are consistent.
+# Explicit per-component object dirs in both Makefiles must agree with these paths.
+for name,source in files.items():
+    if not name.endswith('.dylib'):continue
+    component=source.parents[2]
+    inputs=[p for p in component.iterdir() if p.suffix in ('.h','.mm','.xm') or p.name=='Makefile']
+    inputs += [ROOT/'ModuleSession.h']
+    if not source.is_file() or any(p.stat().st_mtime_ns>source.stat().st_mtime_ns for p in inputs):
+        raise SystemExit('Stale or missing runtime artifact: '+name+'; rebuild its explicit component object directory.')
 brand_text=os.environ.get('WATCHFIX_SLEEP_SYNC_BRAND','')
 brand=int(brand_text,16) if brand_text else None
 device_candidate=os.environ.get('WATCHFIX_SLEEP_SYNC_TEST_CANDIDATE','0')=='1'

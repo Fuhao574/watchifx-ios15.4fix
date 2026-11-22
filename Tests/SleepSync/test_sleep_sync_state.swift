@@ -156,6 +156,17 @@ enum SleepSyncStateTests {
         check(snapshot(noBackend).needsRecovery, "lost active backend requires recovery")
 
         let encoded = try JSONEncoder().encode(verified)
+        for reason in ["noNativeSource", "sourceNotEligible", "ackNotObserved"] {
+            var value = status(.failed)
+            value["messageCode"] = reason
+            if reason == "ackNotObserved" { value["sends"] = 1 }
+            let result = snapshot(value)
+            check(result.statusTitle == "sleepSync.status.\(reason)", "specific failure title")
+            check(!result.ackMatched && result.cleanupVerified, "failure is not protocol success")
+            value["phase"] = "preparing"
+            value["sends"] = 0
+            check(snapshot(value).statusTitle == "sleepSync.status.preparing", "failure code cannot override active phase")
+        }
         let decoded = try JSONDecoder().decode(WFSleepSyncSnapshot.self, from: encoded)
         check(decoded == verified, "Codable terminal round trip")
         for json in ["{}", "null", "[]", "{\"phase\":\"idle\",\"backendAvailable\":1}"] {

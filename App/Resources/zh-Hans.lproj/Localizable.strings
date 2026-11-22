@@ -278,6 +278,12 @@
 "sleepSync.status.cancelled" = "已取消";
 "sleepSync.detail.cancelled" = "会话已取消，后端报告清理已验证。这不代表睡眠同步已确认。";
 "sleepSync.status.failed" = "会话失败";
+"sleepSync.status.noNativeSource" = "未观察到原生设置发送";
+"sleepSync.detail.noNativeSource" = "本轮没有捕获到原生出站记录，附加发送数为 0。不能据此判断设置未保存或配对异常；临时组件已清理，不会自动重试。";
+"sleepSync.status.sourceNotEligible" = "未产生可用的睡眠更新";
+"sleepSync.detail.sourceNotEligible" = "已观察到原生出站记录，但没有触发获准的单次睡眠更新。原生行为保持不变，临时组件已清理，不会自动重试。";
+"sleepSync.status.ackNotObserved" = "已尝试发送，未确认 ACK";
+"sleepSync.detail.ackNotObserved" = "已记录一次附加发送尝试，但窗口内未观察到匹配 ACK。不能宣称手表已采用；临时组件已清理，不会自动重试。";
 "sleepSync.detail.failed" = "会话失败，后端报告清理已验证；不宣称功能成功，也不会自动重试。";
 "sleepSync.status.recoveryRequired" = "需要恢复";
 "sleepSync.detail.recoveryRequired" = "尚未确认安全清理。请勿开始新会话；后端可用时，请使用“恢复并清理”。";

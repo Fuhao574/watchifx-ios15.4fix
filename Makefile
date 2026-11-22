@@ -22,8 +22,8 @@ WATCHFIX_WITH_SLEEP_SYNC ?= 1
 ifeq ($(WATCHFIX_WITH_SLEEP_SYNC),1)
 SUBPROJECTS += Modules/SleepSync
 after-stage::
-	@$(MAKE) -C "$(CURDIR)/Modules/SleepSync/Runtime/Focus" all
-	@$(MAKE) -C "$(CURDIR)/Modules/SleepSync/Runtime/Identity" all
+	@$(MAKE) -C "$(CURDIR)/Modules/SleepSync/Runtime/Focus" all _THEOS_LOCAL_DATA_DIR="$(CURDIR)/Modules/SleepSync/Runtime/Focus/.theos" THEOS_OBJ_DIR_NAME=obj
+	@$(MAKE) -C "$(CURDIR)/Modules/SleepSync/Runtime/Identity" all _THEOS_LOCAL_DATA_DIR="$(CURDIR)/Modules/SleepSync/Runtime/Identity/.theos" THEOS_OBJ_DIR_NAME=obj
 	@python3 "$(CURDIR)/Modules/SleepSync/stage_runtime.py" "$(THEOS_STAGING_DIR)/Applications/WatchFix.app/SleepSyncRuntime"
 endif
 

@@ -8,8 +8,8 @@ include $(THEOS_MAKE_PATH)/aggregate.mk
 # Runtime is bundled privately with the App, NOT installed as permanent hooks.
 # The coordinator alone installs/restores it during an explicit user session.
 before-stage::
-	@$(MAKE) -C "$(CURDIR)/Runtime/Focus" all
-	@$(MAKE) -C "$(CURDIR)/Runtime/Identity" all
+	@$(MAKE) -C "$(CURDIR)/Runtime/Focus" all _THEOS_LOCAL_DATA_DIR="$(CURDIR)/Runtime/Focus/.theos" THEOS_OBJ_DIR_NAME=obj
+	@$(MAKE) -C "$(CURDIR)/Runtime/Identity" all _THEOS_LOCAL_DATA_DIR="$(CURDIR)/Runtime/Identity/.theos" THEOS_OBJ_DIR_NAME=obj
 
 after-stage::
 	@python3 "$(CURDIR)/stage_runtime.py" "$(THEOS_STAGING_DIR)/Applications/WatchFix.app/SleepSyncRuntime"

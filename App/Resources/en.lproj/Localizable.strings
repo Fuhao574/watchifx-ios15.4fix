@@ -278,6 +278,12 @@
 "sleepSync.status.cancelled" = "Cancelled";
 "sleepSync.detail.cancelled" = "The session was cancelled and cleanup is reported as verified. This does not confirm Sleep synchronization.";
 "sleepSync.status.failed" = "Session Failed";
+"sleepSync.status.noNativeSource" = "No native settings send observed";
+"sleepSync.detail.noNativeSource" = "No native outbound record was captured; added send count is 0. This does not establish an unsaved setting or pairing fault. Temporary components were cleaned up; no automatic retry.";
+"sleepSync.status.sourceNotEligible" = "No eligible Sleep update produced";
+"sleepSync.detail.sourceNotEligible" = "Native outbound activity was observed, but no authorized additive Sleep update was triggered. Native behavior was preserved and temporary components were cleaned up; no automatic retry.";
+"sleepSync.status.ackNotObserved" = "Send attempted; ACK unconfirmed";
+"sleepSync.detail.ackNotObserved" = "One additive send attempt was recorded without a matching ACK in the window. Watch adoption is unverified. Temporary components were cleaned up; no automatic retry.";
 "sleepSync.detail.failed" = "The session failed; cleanup is reported as verified. No functional success is claimed and no automatic retry will run.";
 "sleepSync.status.recoveryRequired" = "Recovery Required";
 "sleepSync.detail.recoveryRequired" = "Safe cleanup has not been established. Do not start another session. Use Recover and Clean Up when the backend is available.";

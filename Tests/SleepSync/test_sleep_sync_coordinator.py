@@ -65,6 +65,9 @@ def focus():
     path = session / "focus" / ("run-%s.log" % s["focus_pid"])
     scenario = s.get("scenario", "success")
     if scenario == "no_source": return
+    if scenario == "rejected_source":
+        path.write_text("outbound event=1 version=10 action=update\n")
+        return
     if scenario == "oversized": path.write_text("x" * 32769); return
     if scenario == "other_session":
         (root / "old-session.log").write_text("SLEEPMODULE1 adding ONE Sleep v11 update; original native batch/completion preserved\n")
@@ -539,6 +542,13 @@ class CoordinatorTests(unittest.TestCase):
         self.assertFalse((f.session / "worker-entered/backup").exists())
         self.assertEqual({n: (f.target / n).stat().st_ino for n in NAMES}, before)
         self.assert_restored(f)
+
+    def test_source_rejection_and_no_ack_have_distinct_failure_codes(self):
+        for scenario, reason in (('no_source', 'noNativeSource'), ('rejected_source', 'sourceNotEligible'), ('no_ack', 'ackNotObserved')):
+            with self.subTest(scenario=scenario):
+                f = self.fixture(scenario=scenario)
+                self.assert_no_ack_failure(f)
+                self.assertEqual(f.status['messageCode'], reason)
 
     def test_bad_bridge_times_never_activate_or_change_baseline(self):
         for kind in ("missing-start", "missing-deadline", "zero", "leading-zero",

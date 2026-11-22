@@ -22,6 +22,7 @@ struct WFSleepSyncSnapshot: Codable, Equatable {
         case none, idle, preparing, identity, waitingForSave, sending, acknowledged
         case restoring, finished, cancelled, failed, recoveryRequired, unavailable
         case invalidStatus, deadlineExceeded, protocolConfirmed, userVerified
+        case noNativeSource, sourceNotEligible, ackNotObserved
     }
 
     let sessionID: UUID?
@@ -130,6 +131,9 @@ struct WFSleepSyncSnapshot: Codable, Equatable {
     private var presentationCode: MessageCode {
         if phase == .finished {
             return userVerified && ackMatched && cleanupVerified ? .userVerified : .protocolConfirmed
+        }
+        if phase == .failed, [.noNativeSource, .sourceNotEligible, .ackNotObserved].contains(messageCode) {
+            return messageCode
         }
         // Do not let an optimistic messageCode override the actual phase.
         return MessageCode(rawValue: phase.rawValue) ?? .unavailable

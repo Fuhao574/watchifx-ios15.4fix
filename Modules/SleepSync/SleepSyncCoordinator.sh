@@ -470,8 +470,8 @@ run_session() {
     poll_guard || return 1
     prepare || return 1
     poll_guard || return 1
-    install_pair identity "$hello" || return 1
     write_status identity identity || return 1
+    install_pair identity "$hello" || return 1
     restart identity-baseline com.apple.identityservicesd || return 1
     wait_identity 'event=neutral-result seq=1 depth=1 count=1 route=2 detail=7 returned=1' || return 1
     safe_session || return 1
@@ -514,6 +514,7 @@ EOF
     done
     [ -n "$focus_pid" ] && [ "$focus_pid" != "$previous_focus_pid" ] || return 1
     write_status waitingForSave waitingForSave || return 1
+    failure=noNativeSource
     ticks=0 source_at=0 ack_at=0
     while [ "$ticks" -lt 180 ]; do
         poll_guard || return 1
@@ -521,10 +522,13 @@ EOF
         [ "$wall" -lt "$policy_deadline" ] || return 1
         [ "$(pid_for donotdisturbd)" = "$focus_pid" ] || return 1
         contents=$(read_log "$session/focus/run-$focus_pid.log") || contents=''
+        if [ "$sends" -eq 0 ]; then
+            case "$contents" in *'outbound event='*) failure=sourceNotEligible;; esac
+        fi
         case "$contents" in *'SLEEPMODULE1 adding ONE Sleep v11 update; original native batch/completion preserved'*)
             if [ "$sends" -eq 0 ]; then
                 mark sent-observed || return 1
-                sends=1 source_at=$wall
+                sends=1 source_at=$wall failure=ackNotObserved
                 write_status sending sending || return 1
             fi;;
         esac

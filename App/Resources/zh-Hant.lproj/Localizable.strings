@@ -278,6 +278,12 @@
 "sleepSync.status.cancelled" = "已取消";
 "sleepSync.detail.cancelled" = "工作階段已取消，後端回報清理已驗證。這不代表睡眠同步已確認。";
 "sleepSync.status.failed" = "工作階段失敗";
+"sleepSync.status.noNativeSource" = "未觀察到原生設定傳送";
+"sleepSync.detail.noNativeSource" = "本輪沒有擷取到原生傳出記錄，附加傳送數為 0。不能據此判斷設定未儲存或配對異常；暫時元件已清理，不會自動重試。";
+"sleepSync.status.sourceNotEligible" = "未產生可用的睡眠更新";
+"sleepSync.detail.sourceNotEligible" = "已觀察到原生傳出記錄，但沒有觸發獲准的單次睡眠更新。原生行為保持不變，暫時元件已清理，不會自動重試。";
+"sleepSync.status.ackNotObserved" = "已嘗試傳送，未確認 ACK";
+"sleepSync.detail.ackNotObserved" = "已記錄一次附加傳送嘗試，但視窗內未觀察到相符 ACK。不能宣稱手錶已採用；暫時元件已清理，不會自動重試。";
 "sleepSync.detail.failed" = "工作階段失敗，後端回報清理已驗證；不宣稱功能成功，也不會自動重試。";
 "sleepSync.status.recoveryRequired" = "需要復原";
 "sleepSync.detail.recoveryRequired" = "尚未確認安全清理。請勿開始新工作階段；後端可用時，請使用「復原並清理」。";
