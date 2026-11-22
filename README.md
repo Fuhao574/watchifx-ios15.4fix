@@ -19,6 +19,7 @@ App 内可重复手动同步的协调／恢复流程仍在开发验收，**目�
 微信实时来电在非睡眠状态也不提醒，作为独立通话传递问题，不以放行普通微信通知绕过。
 
 模块代码与限制见 [`Modules/SleepSync/README.md`](Modules/SleepSync/README.md)。
+本机测试源码及运行方式见 [`Tests/SleepSync/README.md`](Tests/SleepSync/README.md)。
 临时身份、单次附加更新、真实 ACK 和恢复分别记录；ACK 不等于全部规则已经保存。
 保留正常 AppsSupport／Messages 和 PairingCompatibility 行为，不伪造 ACK 或 initial-sync。
 

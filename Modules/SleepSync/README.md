@@ -24,9 +24,20 @@
 不要使用 `make do` / install。完整日志和限制在工作区 reports 中。
 正常AppsSupport/Messages/Pairing源不改；原Focus研究模块仍是独立旧模块，不是新手动入口。
 
+## 本机测试
+
+测试源码与运行说明见 [`Tests/SleepSync`](../../Tests/SleepSync/README.md)。
+
+- 协调器13个测试方法全量通过：正常流程、无源/无ACK、取消、恢复重入、部分安装、未知哈希等。
+- 会话边界37个场景通过：selector变化、权限/链接、目录替换、一次领取及撤销。
+- Foundation状态投影95项断言通过，ACK不冒充用户功能验证。
+
+此前协调器测试超时已定位到夹具逐命令启动Python的开销放大；改用本地轻量客户端和常驻
+mock dispatcher后全量约42秒完成。夹具同时严格检查PATH翻译，禁止意外执行主机真实设备命令。
+这些结果不能替代实际设备恢复验证。
+
 ## 尚未通过
 
-- 协调器完整故障集存在120秒超时，未定位，不能宣称自动恢复就绪。
 - RootHide实际加载变换后的哈希未加入新runtime恢复白名单，未知hash不覆盖。
 - 新root launcher和注册前窗口尚无完整故障/设备验证。
 - worker总deadline需收紧至selector既定deadline。
