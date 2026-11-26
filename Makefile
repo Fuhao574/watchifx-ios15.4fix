@@ -16,6 +16,13 @@ THEOS_DEVICE_PORT ?= 22
 
 SUBPROJECTS = App Preferences $(patsubst %/Makefile,%,$(wildcard Plugins/*/Makefile))
 
+# HealthSupport is a normal WatchFix plugin source with a separate offline
+# isolation check. Its plugin is healthd-only and remains disabled until the
+# user explicitly installs it from WatchFix.
+.PHONY: healthsupport-offline-check
+healthsupport-offline-check:
+	@python3 -B "$(CURDIR)/Tests/HealthSupport/test_module_isolation.py"
+
 # Include the module in normal source builds. Its runtime stays disabled unless
 # a separate, brand-bound device test build is explicitly requested.
 WATCHFIX_WITH_SLEEP_SYNC ?= 1
@@ -33,8 +40,10 @@ export WATCHFIX_PLUGIN_CONFIG_FILE = $(CURDIR)/Utils/PluginConfig.xm
 export WATCHFIX_UTILS_FILES = $(filter-out $(WATCHFIX_PLUGIN_CONFIG_FILE),$(wildcard $(CURDIR)/Utils/*.xm))
 export WATCHFIX_UTILS_CFLAGS = -I$(CURDIR)/Utils
 WATCHFIX_LDID := $(firstword $(wildcard /usr/local/bin/ldid /opt/homebrew/bin/ldid))
+ifeq ($(origin TARGET_CODESIGN),undefined)
 ifneq ($(WATCHFIX_LDID),)
-export TARGET_CODESIGN := $(WATCHFIX_LDID)
+export TARGET_CODESIGN = $(WATCHFIX_LDID)
+endif
 endif
 
 include $(THEOS)/makefiles/common.mk

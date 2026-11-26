@@ -1,0 +1,8 @@
+"plugin.HealthSupport.title" = "睡眠阶段支持";
+"plugin.HealthSupport.detail" = "让 iOS 15.4 的健康库接收并保留 Apple Watch 的睡眠阶段（核心、深睡、REM），供 StressWatch 等 App 读取。删除只会停止接收新的阶段数据，已接收数据的保护会保留。";
+"plugin.HealthSupport.status.accept.title" = "接收新的睡眠阶段";
+"plugin.HealthSupport.status.accept.on" = "已开启。手表新同步的核心、深睡、REM 阶段会被健康库收下。";
+"plugin.HealthSupport.status.accept.off" = "已停止。手表新同步的睡眠阶段会被系统照旧拒收。";
+"plugin.HealthSupport.status.projection.title" = "已接收数据的保护";
+"plugin.HealthSupport.status.projection.on" = "保留中。已经写入健康库的睡眠阶段要靠它，健康 App 才能正常算出睡眠摘要；删除本修复后它也会留在后台。";
+"plugin.HealthSupport.status.projection.off" = "未启用。还没有任何睡眠阶段被写入健康库。";

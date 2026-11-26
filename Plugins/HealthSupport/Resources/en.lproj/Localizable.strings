@@ -1,0 +1,8 @@
+"plugin.HealthSupport.title" = "Sleep Stage Support";
+"plugin.HealthSupport.detail" = "Lets the iOS 15.4 health store accept and keep Apple Watch sleep stages (Core, Deep, REM) so apps such as StressWatch can read them. Removing only stops new stages from being accepted; the guard for stages already stored stays.";
+"plugin.HealthSupport.status.accept.title" = "Accepting new sleep stages";
+"plugin.HealthSupport.status.accept.on" = "On. Core, Deep and REM stages the watch syncs from now on are stored.";
+"plugin.HealthSupport.status.accept.off" = "Off. Sleep stages the watch syncs from now on are rejected as before.";
+"plugin.HealthSupport.status.projection.title" = "Guard for stored stages";
+"plugin.HealthSupport.status.projection.on" = "Kept. The Health app needs it to summarise the stages already stored; it stays in the background after this fix is removed.";
+"plugin.HealthSupport.status.projection.off" = "Not active. No sleep stage has been stored yet.";

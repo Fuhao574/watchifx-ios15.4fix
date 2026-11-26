@@ -69,7 +69,12 @@
 
 ### 尚未实现
 
-- Health Support
+- Health Support（已纳入 WatchFix 插件构建；默认不启用）
+
+健康兼容模块已纳入本工程，并包含已在 iOS 15.4/19E241 真机验证过的 healthd Runtime；
+默认不启用，只有用户在 WatchFix 中安装该插件时才写入标记并加载。可通过
+`make healthsupport-offline-check` 做离线隔离检查；StressWatch 的第三方客户端读取仍未解决，
+也不代表历史补回或 iOS16 阶段图已支持。
 
 其他功能仍可能存在兼容性问题。本文中的 iOS 15.4 修复和睡眠同步验证结果，不代表上列功能在所有环境中均可用。
 

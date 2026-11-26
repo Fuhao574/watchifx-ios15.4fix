@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>WFPluginManifest</key>
+	<dict>
+		<key>WFPluginConfigurationClass</key>
+		<string>HealthSupportPluginConfiguration</string>
+		<key>WFPluginDetail</key>
+		<string>plugin.HealthSupport.detail</string>
+		<key>WFPluginHasInstallableContent</key>
+		<true/>
+		<key>WFPluginInjectionTargets</key>
+		<dict>
+			<key>Bundles</key>
+			<array>
+				<string>com.apple.healthd</string>
+			</array>
+			<key>Executables</key>
+			<array>
+				<string>healthd</string>
+				<string>com.apple.healthd</string>
+			</array>
+		</dict>
+		<key>WFPluginMinimumSystemVersion</key>
+		<integer>984064</integer> <!-- 15.4.0 -->
+		<!-- Pinned to the one build the runtime's class and method identity checks were verified on. -->
+		<key>WFPluginMaximumSystemVersion</key>
+		<integer>984064</integer> <!-- 15.4.0 -->
+		<key>WFPluginMinimumWatchOSVersion</key>
+		<integer>589824</integer> <!-- 9.0.0, when the watch started recording sleep stages -->
+		<key>WFPluginNanoCapabilities</key>
+		<array/>
+		<!-- Left empty on purpose: the configuration class restarts healthd itself, right after install or removal. -->
+		<key>WFPluginRestartExecutables</key>
+		<array/>
+		<key>WFPluginScopeIdentifier</key>
+		<string>com.apple.Health</string>
+		<key>WFPluginTitle</key>
+		<string>plugin.HealthSupport.title</string>
+	</dict>
+</dict>
+</plist>

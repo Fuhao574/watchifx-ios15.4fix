@@ -20,6 +20,21 @@ $(APPLICATION_NAME)_PRIVATE_FRAMEWORKS = NanoRegistry NanoSystemSettings Softwar
 $(APPLICATION_NAME)_CFLAGS = -fobjc-arc -I$(CURDIR)/../Utils -I$(CURDIR)/Bridge -I$(CURDIR)/Bridge/Internal -I$(CURDIR)/Bridge/Plugin -I$(CURDIR)/Bridge/Scanner -I$(CURDIR)/Bridge/Watch
 # $(APPLICATION_NAME)_LDFLAGS = -lroothide
 $(APPLICATION_NAME)_RESOURCE_DIRS = Resources
-$(APPLICATION_NAME)_CODESIGN_FLAGS = -S$(CURDIR)/Entitlements.xml
+# Keep ldid's entitlement syntax for the normal jailbreak toolchain, but allow
+# local ad-hoc codesign builds to supply Apple's equivalent flags explicitly.
+WATCHFIX_APPLICATION_CODESIGN_FLAGS ?= -S$(CURDIR)/Entitlements.xml
+$(APPLICATION_NAME)_CODESIGN_FLAGS = $(WATCHFIX_APPLICATION_CODESIGN_FLAGS)
+
+# Explicit LOCAL diagnostics App variant only; never enabled by aggregate build.
+# Private fixed PID/path header must be generated/audited separately. No helper
+# executable, extra entitlement, compatibility runtime or SleepSync change.
+ifeq ($(WATCHFIX_HEALTH_DIAGNOSTICS),1)
+ifeq ($(strip $(WATCHFIX_HEALTH_DIAGNOSTICS_INCLUDE)),)
+$(error "Diagnostics opt-in requires private fixed configuration include directory")
+endif
+$(APPLICATION_NAME)_FILES += $(CURDIR)/../Modules/HealthSupport/AppDiagnostics/FixedMappingDiagnostic.m
+$(APPLICATION_NAME)_CFLAGS += -DWATCHFIX_HEALTH_DIAGNOSTICS=1 -fobjc-arc-exceptions -I$(WATCHFIX_HEALTH_DIAGNOSTICS_INCLUDE)
+$(APPLICATION_NAME)_SWIFTFLAGS += -D WATCHFIX_HEALTH_DIAGNOSTICS
+endif
 
 include $(THEOS_MAKE_PATH)/application.mk

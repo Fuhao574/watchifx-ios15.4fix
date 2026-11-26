@@ -24,6 +24,11 @@ FOUNDATION_EXPORT NSNotificationName const WFPluginBridgeDidChangeNotification;
 + (BOOL)clearPluginLogs:(NSError * _Nullable * _Nullable)error;
 + (BOOL)restartWatchServices:(NSError * _Nullable * _Nullable)error;
 + (BOOL)restartExecutablesNamed:(NSArray<NSString *> *)processNames error:(NSError * _Nullable * _Nullable)error;
+// Root helpers for configuration classes whose plugin needs more than the
+// default copy-into-TweakInject flow. Paths are used exactly as given.
++ (BOOL)installFileAtPath:(NSString *)path content:(NSString *)content owner:(nullable NSString *)owner mode:(nullable NSNumber *)mode error:(NSError * _Nullable * _Nullable)error;
++ (BOOL)removeFileAtPath:(NSString *)path error:(NSError * _Nullable * _Nullable)error;
++ (BOOL)restartLaunchdServiceNamed:(NSString *)service error:(NSError * _Nullable * _Nullable)error;
 + (nullable UIImage *)pluginIconForScopeIdentifier:(NSString *)scopeIdentifier;
 + (void)showWarningBannerWithMessage:(NSString *)message delay:(NSTimeInterval)delay;
 

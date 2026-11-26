@@ -426,6 +426,20 @@ static Class PluginConfigurationProviderClass(NSString *pluginName, NSDictionary
     return providerClass;
 }
 
+// A provider may add its own condition to the default rule that every artifact
+// is present. Without such a method the plugin is enabled once installed.
+static BOOL ProviderEnablesPlugin(NSString *pluginName, NSDictionary *pluginInfo) {
+    Class providerClass = PluginConfigurationProviderClass(pluginName, pluginInfo);
+    SEL selector = @selector(pluginIsEnabledWithIdentifier:pluginInfo:);
+    if (!providerClass || ![providerClass respondsToSelector:selector]) {
+        return YES;
+    }
+
+    typedef BOOL (*EnabledIMP)(id, SEL, NSString *, NSDictionary *);
+    EnabledIMP implementation = (EnabledIMP)[providerClass methodForSelector:selector];
+    return implementation(providerClass, selector, pluginName, pluginInfo);
+}
+
 static NSString *InstalledTargetName(NSString *destination, NSString *target) {
     if ([destination isEqualToString:kDynamicLibrariesRelativePath] && ![target hasPrefix:kPluginPrefix]) {
         return [kPluginPrefix stringByAppendingString:target];
@@ -809,7 +823,7 @@ static BOOL EffectivePluginStateForName(NSString *pluginName, NSDictionary *plug
         return enabledValue ? enabledValue.boolValue : YES;
     }
 
-    return PluginIsInstalledNamed(pluginName, pluginInfo);
+    return PluginIsInstalledNamed(pluginName, pluginInfo) && ProviderEnablesPlugin(pluginName, pluginInfo);
 }
 
 static NSDictionary<NSString *, NSNumber *> *DefaultPairingSettings(void) {
@@ -1486,6 +1500,61 @@ static BOOL RestartWatchServices(NSError **error) {
         AppendLog([NSString stringWithFormat:@"Restarted targeted services: %@", [[targets array] componentsJoinedByString:@", "]]);
     }
     return YES;
+}
+
++ (BOOL)installFileAtPath:(NSString *)path content:(NSString *)content owner:(NSString *)owner mode:(NSNumber *)mode error:(NSError * _Nullable * _Nullable)error {
+    NSString *temporaryDirectory = NSTemporaryDirectory();
+    if (path.length == 0 || !content || temporaryDirectory.length == 0) {
+        if (error) {
+            *error = BridgeError(56, @"Missing file path, content or temporary directory");
+        }
+        return NO;
+    }
+
+    NSString *temporaryPath = [temporaryDirectory stringByAppendingPathComponent:[NSString stringWithFormat:@"WatchFix-%@-%@", path.lastPathComponent, NSUUID.UUID.UUIDString]];
+    NSError *writeError = nil;
+    if (![content writeToFile:temporaryPath atomically:YES encoding:NSUTF8StringEncoding error:&writeError]) {
+        if (error) {
+            *error = BridgeError(56, writeError.localizedDescription ?: @"Unable to write the temporary file");
+        }
+        return NO;
+    }
+
+    BOOL installed = CopyItem([NSURL fileURLWithPath:temporaryPath], [NSURL fileURLWithPath:path], @"file", nil, error);
+    [[NSFileManager defaultManager] removeItemAtPath:temporaryPath error:nil];
+    if (!installed) {
+        return NO;
+    }
+
+    // /bin/cp runs as root, so the copy is root-owned until this says otherwise.
+    if (owner.length > 0 && !RunRootCommand(@"/usr/sbin/chown", @[owner, path], 56, @"Unable to set the file owner", error)) {
+        return NO;
+    }
+    if (mode && !RunRootCommand(@"/usr/bin/chmod", @[[NSString stringWithFormat:@"%04lo", (unsigned long)mode.unsignedLongValue], path], 56, @"Unable to set the file mode", error)) {
+        return NO;
+    }
+    return YES;
+}
+
++ (BOOL)removeFileAtPath:(NSString *)path error:(NSError * _Nullable * _Nullable)error {
+    if (path.length == 0) {
+        return YES;
+    }
+    return RemoveItemAsRoot([NSURL fileURLWithPath:path], 56, @"Unable to remove file", error);
+}
+
++ (BOOL)restartLaunchdServiceNamed:(NSString *)service error:(NSError * _Nullable * _Nullable)error {
+    if (service.length == 0) {
+        if (error) {
+            *error = BridgeError(56, @"Missing service name");
+        }
+        return NO;
+    }
+    BOOL restarted = RunRootCommand(@"/bin/launchctl", @[@"kickstart", @"-k", @"-p", service], 56, [NSString stringWithFormat:@"Unable to restart %@", service], error);
+    if (restarted) {
+        AppendLog([NSString stringWithFormat:@"Restarted launchd service %@", service]);
+    }
+    return restarted;
 }
 
 + (UIImage *)pluginIconForScopeIdentifier:(NSString *)scopeIdentifier {
