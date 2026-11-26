@@ -151,6 +151,33 @@
 - 健康 App 睡眠显示已获用户反馈；StressWatch 仍无数据。仅更新 WatchFix 包不替代 HealthSupport
   Runtime 的独立加载和功能验收。本轮升级没有重启 healthd，也没有发起睡眠配置同步。
 
+### StressWatch 低开销兼容开关（2026-11-26）
+
+新增 `Modules/HealthSupport/StressWatch` 附属运行库，经“睡眠阶段支持”的
+模块设置独立开启/关闭；不属于 SleepSync（睡眠配置同步），不解锁 Pro。
+默认关闭，检测到独立 v1.3 时提供保存迁移；切换后保存并彻底重开 StressWatch。
+不会为切换此开关而重启 healthd，不移除已存阶段的读取保护。
+
+与已验收的独立 v1.3 相比，移除查询观察器、样本计数、JSON 回执、计时窗口
+和两次整包哈希，只保留启动身份/关键代码检查及两个兼容点。低开销并非零
+开销；精确适用当前已核对的 StressWatch 镜像，其他版本拒绝启用。
+
+`2.0.12~healthsupport2-1+debug` 是本次单设备测试包；App/模块编译、归档完整性
+和本机开关/迁移/失败回滚测试已通过。用户已在设置中保存迁移，设备文件核对
+确认低开销库接替且旧 v1.3 注入文件移除；随后用户反馈“已测试stresswatch正常”。
+这属于用户侧功能验收，尚未测试完整的关闭/重开/再开启流程、下一晚自动更新
+或长期功耗。旧 sleepsync3 包的历史限制和哈希不变。
+新包 SHA256：`fac6974a58c875f2c41a74f0fa6d74bd577f8f252216b2671dd48a2697fd4484`。
+仅包含低开销正式源码附属库，不包含独立观察实验、第三方 Pro 包、设备日志或凭据。
+
+本次源码测试可在 macOS 运行，不需要手机、商业 App 文件或私有诊断副本：
+```sh
+python3 -B Tests/HealthSupport/test_stresswatch_lowpower.py
+python3 -B Tests/HealthSupport/test_stresswatch_installer_host.py
+```
+后者使用合成 Mach-O 数据及模拟 root 命令测试实际安装器方法，不执行 iOS 代码。
+上面的设备绑定 deb 哈希只是历史测试产物记录，不表示当前源码可逐字节复现该包。
+
 ## Credits
 
 - **[577fkj/WatchFix](https://github.com/577fkj/WatchFix)**：上游项目与原始功能实现。

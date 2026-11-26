@@ -6,3 +6,10 @@
 "plugin.HealthSupport.status.projection.title" = "Guard for stored stages";
 "plugin.HealthSupport.status.projection.on" = "Kept. The Health app needs it to summarise the stages already stored; it stays in the background after this fix is removed.";
 "plugin.HealthSupport.status.projection.off" = "Not active. No sleep stage has been stored yet.";
+"plugin.HealthSupport.stress.section" = "Third-party app compatibility";
+"plugin.HealthSupport.stress.title" = "StressWatch sleep-stage compatibility";
+"plugin.HealthSupport.stress.detail" = "Only for the verified StressWatch build: preserve decoding and display of real Core, Deep and REM stages. No test logging, query observer or background polling; does not unlock Pro. Save changes, fully quit and reopen StressWatch.";
+"plugin.HealthSupport.stress.installed" = "Compatibility component installed. Reopen StressWatch to apply changes; Health services are not restarted.";
+"plugin.HealthSupport.stress.disabled" = "Compatibility component disabled. This does not affect Health stage reception, existing-data protection or sleep-configuration sync.";
+"plugin.HealthSupport.stress.saved" = "Settings saved. If you changed StressWatch compatibility, fully quit and reopen StressWatch.";
+"plugin.HealthSupport.stress.migrate" = "Standalone test build detected. Keep the switch on and tap Save to migrate to the low-overhead build, then fully quit and reopen StressWatch.";

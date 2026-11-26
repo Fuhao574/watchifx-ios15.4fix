@@ -302,7 +302,7 @@ final class PluginConfigurationViewController: WFScrollStackViewController {
                     self.store.refreshCurrentCompatibility(resetLatestUpdate: false)
                     self.store.alert = Alert(
                         title: L("alert.success.title"),
-                        message: L("alert.settingsSaved.message")
+                        message: self.stringValue(self.configurationPage[PluginConfigurationPageKey.savedMessage], fallback: L("alert.settingsSaved.message")) ?? L("alert.settingsSaved.message")
                     )
                 case let .failure(error):
                     self.store.alert = Alert(title: self.pageTitle(plugin: self.currentPlugin), message: error.localizedDescription)
@@ -326,7 +326,8 @@ final class PluginConfigurationViewController: WFScrollStackViewController {
     }
 
     private var hasModifiedConfiguration: Bool {
-        !configurationEquals(draftConfiguration, savedConfigurationWithDefaults())
+        boolValue(configurationPage["requiresSave"], fallback: false)
+            || !configurationEquals(draftConfiguration, savedConfigurationWithDefaults())
     }
 
     private func savedConfigurationWithDefaults() -> [String: Any] {

@@ -84,6 +84,9 @@ watchfix-inject-build-info:
 		--build-visibility "$(WATCHFIX_BUILD_VISIBILITY)" \
 		--build-variant "$(WATCHFIX_BUILD_VARIANT)" \
 		--configuration-platform "$(WATCHFIX_CONFIGURATION_PLATFORM)"
+	@if [ "$(notdir $(TARGET_CODESIGN))" = "codesign" ]; then \
+		"$(TARGET_CODESIGN)" --force $(WATCHFIX_APPLICATION_CODESIGN_FLAGS) "$(THEOS_STAGING_DIR)/Applications/WatchFix.app"; \
+	fi
 
 # Theos otherwise reuses a staged control file after only Version changes,
 # producing a new filename with stale Debian metadata on incremental builds.

@@ -1,7 +1,19 @@
 {
   "schemaVersion": 1,
   "identifier": "HealthSupport",
-  "version": "1.0.0~healthsupport1",
+  "version": "1.1.0~stresswatch1",
+  "stressWatchCompanion": {
+    "source": "StressWatch/StressWatchCompatibility.m",
+    "target": "com.ideation.Stress",
+    "optionalSettingsKey": "StressWatchCompatibilityEnabled",
+    "defaultEnabled": false,
+    "bundled": true,
+    "queryObserver": false,
+    "fileLogging": false,
+    "deviceValidated": true,
+    "validationScope": "settings-save-migration-files-verified-user-reports-app-normal; off-on-cycle-and-power-not-measured",
+    "verifiedPredecessor": "standalone-v1.3-current-day-stage-display"
+  },
   "status": "runtime-integrated-device-verified",
   "integratedInWatchFixSource": true,
   "ordinaryPackageIncluded": true,

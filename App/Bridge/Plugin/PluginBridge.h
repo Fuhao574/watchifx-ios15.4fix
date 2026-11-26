@@ -29,6 +29,10 @@ FOUNDATION_EXPORT NSNotificationName const WFPluginBridgeDidChangeNotification;
 + (BOOL)installFileAtPath:(NSString *)path content:(NSString *)content owner:(nullable NSString *)owner mode:(nullable NSNumber *)mode error:(NSError * _Nullable * _Nullable)error;
 + (BOOL)removeFileAtPath:(NSString *)path error:(NSError * _Nullable * _Nullable)error;
 + (BOOL)restartLaunchdServiceNamed:(NSString *)service error:(NSError * _Nullable * _Nullable)error;
+// Optional HealthSupport companion; never restarts healthd or StressWatch.
++ (BOOL)healthSupportStressWatchEnabled;
++ (BOOL)healthSupportStressWatchNeedsMigration;
++ (BOOL)setHealthSupportStressWatchEnabled:(BOOL)enabled error:(NSError * _Nullable * _Nullable)error;
 + (nullable UIImage *)pluginIconForScopeIdentifier:(NSString *)scopeIdentifier;
 + (void)showWarningBannerWithMessage:(NSString *)message delay:(NSTimeInterval)delay;
 

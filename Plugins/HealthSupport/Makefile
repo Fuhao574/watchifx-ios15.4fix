@@ -1,8 +1,8 @@
 TARGET := iphone:clang:16.5:15.0
 WATCHFIX_PLUGIN_MINIMUM_OS_VERSION = 15.0
 PLUGIN_NAME = HealthSupport
-WATCHFIX_PLUGIN_SHORT_VERSION = 1.0.0
-WATCHFIX_PLUGIN_VERSION = 1.0.0~healthsupport1
+WATCHFIX_PLUGIN_SHORT_VERSION = 1.1.0
+WATCHFIX_PLUGIN_VERSION = 1.1.0~stresswatch1
 WATCHFIX_PLUGIN_RESOURCE_DIRS = Resources
 WATCHFIX_PLUGIN_FRAMEWORKS = Foundation
 
@@ -37,3 +37,8 @@ WATCHFIX_PLUGIN_CFLAGS = -fobjc-arc -Wall -Wextra \
 HealthSupport_CCFLAGS = -std=gnu++17
 
 include ../plugin.mk
+
+# Companion library is bundled as optional content, never part of healthd's
+# dylib or its filter. Only the HealthSupport settings action installs it.
+internal-library-stage_::
+	@$(MAKE) -C "$(CURDIR)/../../Modules/HealthSupport/StressWatch" all stage THEOS_CURRENT_INSTANCE= _THEOS_CURRENT_TYPE= _THEOS_LOCAL_DATA_DIR="$(CURDIR)/../../Modules/HealthSupport/StressWatch/.theos" THEOS_OBJ_DIR_NAME=obj THEOS_STAGING_DIR="$(THEOS_STAGING_DIR)"

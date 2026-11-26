@@ -12,6 +12,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <roothide.h>
+#include <CommonCrypto/CommonDigest.h>
+#include <mach-o/loader.h>
 
 static NSString *const kStateRelativePath = @"/var/mobile/Library/Preferences/cn.fkj233.watchfix.plist";
 static NSString *const kPluginStatesKey = @"PluginStates";
@@ -35,6 +37,41 @@ static BOOL ApplyDefaultPluginNamed(NSString *pluginName, BOOL enabled, NSError 
 static NSDictionary<NSString *, NSNumber *> *DirectInstalledPluginStates(void);
 static WFPluginConfigurationContext *PluginConfigurationContextForPluginNamed(NSString *pluginName, NSDictionary **pluginInfoOut, NSError **error);
 static Class PluginConfigurationProviderClass(NSString *pluginName, NSDictionary *pluginInfo);
+
+// Code identity survives loader/signature changes to a dylib's outer container.
+// Used only to avoid overwriting an unfamiliar installed companion or legacy test.
+static NSString *StressWatchTextDigest(NSString *path) {
+    NSData *data = [NSData dataWithContentsOfFile:path];
+    if (data.length < sizeof(struct mach_header_64) || data.length > 2 * 1024 * 1024) return nil;
+    const uint8_t *bytes = (const uint8_t *)data.bytes;
+    struct mach_header_64 h; memcpy(&h, bytes, sizeof(h));
+    if (h.magic != MH_MAGIC_64 || h.sizeofcmds > data.length - sizeof(h)) return nil;
+    size_t pos = sizeof(h), end = pos + h.sizeofcmds;
+    for (uint32_t i = 0; i < h.ncmds; ++i) {
+        if (pos > end || end - pos < sizeof(struct load_command)) return nil;
+        struct load_command lc; memcpy(&lc, bytes + pos, sizeof(lc));
+        if (lc.cmdsize < sizeof(lc) || lc.cmdsize > end - pos) return nil;
+        if (lc.cmd == LC_SEGMENT_64) {
+            struct segment_command_64 seg;
+            if (lc.cmdsize < sizeof(seg)) return nil;
+            memcpy(&seg, bytes + pos, sizeof(seg));
+            if (seg.nsects > (lc.cmdsize - sizeof(seg)) / sizeof(struct section_64)) return nil;
+            for (uint32_t j = 0; j < seg.nsects; ++j) {
+                struct section_64 s;
+                memcpy(&s, bytes + pos + sizeof(seg) + j * sizeof(s), sizeof(s));
+                if (strncmp(s.sectname, "__text", 16) || strncmp(s.segname, "__TEXT", 16)) continue;
+                if (s.offset > data.length || s.size > data.length - s.offset || s.size > UINT32_MAX) return nil;
+                unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+                CC_SHA256(bytes + s.offset, (CC_LONG)s.size, digest);
+                NSMutableString *hex = [NSMutableString string];
+                for (NSUInteger k = 0; k < sizeof(digest); ++k) [hex appendFormat:@"%02x", digest[k]];
+                return hex;
+            }
+        }
+        pos += lc.cmdsize;
+    }
+    return nil;
+}
 
 NSNotificationName const WFPluginBridgeDidChangeNotification = @"WFPluginBridgeDidChangeNotification";
 
@@ -1402,6 +1439,7 @@ static BOOL RestartWatchServices(NSError **error) {
         normalizedConfiguration = providerConfiguration;
     }
 
+    NSDictionary *previousConfiguration = DirectPluginConfigurationNamed(pluginName);
     if (!SavePluginConfigurationNamed(pluginName, normalizedConfiguration, error)) {
         return NO;
     }
@@ -1411,6 +1449,12 @@ static BOOL RestartWatchServices(NSError **error) {
         typedef BOOL (*DidSaveIMP)(id, SEL, WFPluginConfigurationContext *, NSError **);
         DidSaveIMP implementation = (DidSaveIMP)[providerClass methodForSelector:didSaveSelector];
         if (!implementation(providerClass, didSaveSelector, context, error)) {
+            // HealthSupport companion installer rolls back its files on failure;
+            // keep the displayed saved preference in step with that rollback.
+            if ([pluginName isEqualToString:@"HealthSupport"] &&
+                !SavePluginConfigurationNamed(pluginName, previousConfiguration, nil) && error) {
+                *error = BridgeError(61, @"StressWatch update failed and the previous setting could not be restored");
+            }
             return NO;
         }
     }
@@ -1555,6 +1599,136 @@ static BOOL RestartWatchServices(NSError **error) {
         AppendLog([NSString stringWithFormat:@"Restarted launchd service %@", service]);
     }
     return restarted;
+}
+
++ (BOOL)healthSupportStressWatchEnabled {
+    NSString *root = JBRootPath(kDynamicLibrariesRelativePath);
+    NSFileManager *fm = NSFileManager.defaultManager;
+    return ([fm fileExistsAtPath:[root stringByAppendingPathComponent:@"WatchFix_HealthSupportStressWatch.plist"]] &&
+            [fm fileExistsAtPath:[root stringByAppendingPathComponent:@"WatchFix_HealthSupportStressWatch.dylib"]]) ||
+           ([fm fileExistsAtPath:[root stringByAppendingPathComponent:@"WatchFix_StressWatchSleepModelGate.plist"]] &&
+            [fm fileExistsAtPath:[root stringByAppendingPathComponent:@"WatchFix_StressWatchSleepModelGate.dylib"]]);
+}
+
++ (BOOL)healthSupportStressWatchNeedsMigration {
+    NSString *root = JBRootPath(kDynamicLibrariesRelativePath);
+    return [NSFileManager.defaultManager fileExistsAtPath:[root stringByAppendingPathComponent:@"WatchFix_StressWatchSleepModelGate.plist"]] ||
+        [NSFileManager.defaultManager fileExistsAtPath:[root stringByAppendingPathComponent:@"WatchFix_StressWatchSleepModelGate.dylib"]];
+}
+
++ (BOOL)setHealthSupportStressWatchEnabled:(BOOL)enabled error:(NSError **)error {
+    // Serialize UI saves. Only these four owned paths can be touched; never
+    // third-party StressWatch.disabled/plist, healthd markers or SleepSync.
+    @synchronized(self) {
+        NSFileManager *fm = NSFileManager.defaultManager;
+        NSString *root = JBRootPath(kDynamicLibrariesRelativePath);
+        NSArray *stems = @[@"WatchFix_HealthSupportStressWatch", @"WatchFix_StressWatchSleepModelGate"];
+        NSMutableArray<NSString *> *paths = [NSMutableArray array];
+        for (NSString *stem in stems) for (NSString *ext in @[@"plist", @"dylib"])
+            [paths addObject:[root stringByAppendingPathComponent:[stem stringByAppendingPathExtension:ext]]];
+        for (NSString *path in paths) {
+            struct stat st;
+            int result = lstat(path.fileSystemRepresentation, &st);
+            if ((result != 0 && errno != ENOENT) ||
+                (result == 0 && (!S_ISREG(st.st_mode) || st.st_nlink != 1 || st.st_uid != 0))) {
+                if (error) *error = BridgeError(61, @"StressWatch compatibility destination is not an owned regular file");
+                return NO;
+            }
+        }
+        NSURL *payload = [PluginBundleURLNamed(@"HealthSupport") URLByAppendingPathComponent:@"StressWatch" isDirectory:YES];
+        NSURL *library = [payload URLByAppendingPathComponent:@"StressWatchCompatibility.dylib"];
+        NSURL *filter = [payload URLByAppendingPathComponent:@"Filter.plist"];
+        NSDictionary *identity = [NSDictionary dictionaryWithContentsOfURL:[payload URLByAppendingPathComponent:@"Identity.plist"]];
+        NSString *bundledCodeHash = StressWatchTextDigest(library.path);
+        for (NSUInteger i = 0; i < paths.count; ++i) {
+            NSString *path = paths[i];
+            if (![fm fileExistsAtPath:path]) continue;
+            if ([path.pathExtension isEqual:@"plist"]) {
+                NSDictionary *value = [NSDictionary dictionaryWithContentsOfFile:path];
+                if (![value isEqual:@{@"Filter": @{@"Bundles": @[@"com.ideation.Stress"]}}]) {
+                    if (error) *error = BridgeError(61, @"Unrecognized StressWatch filter; nothing was changed");
+                    return NO;
+                }
+            } else {
+                NSString *expectedCode = i == 3 ? @"b64e4ae25fd829efd456a9a633502a3bf6bc540f2c809908d94fd24f82a6c918" : bundledCodeHash;
+                if (!expectedCode || ![StressWatchTextDigest(path) isEqual:expectedCode]) {
+                    if (error) *error = BridgeError(61, @"Unrecognized StressWatch compatibility library; nothing was changed");
+                    return NO;
+                }
+            }
+        }
+        // Verify bundled bytes before changing an enabled configuration.
+        if (enabled) {
+            NSDictionary *filterValue = [NSDictionary dictionaryWithContentsOfURL:filter];
+            NSDictionary *expectedFilter = @{@"Filter": @{@"Bundles": @[@"com.ideation.Stress"]}};
+            if (![filterValue isEqual:expectedFilter] || ![identity[@"schema"] isEqual:@1] ||
+                ![identity[@"sha256"] isKindOfClass:NSDictionary.class]) {
+                if (error) *error = BridgeError(61, @"Bundled StressWatch compatibility metadata is invalid");
+                return NO;
+            }
+            for (NSURL *url in @[library, filter]) {
+                NSData *data = [NSData dataWithContentsOfURL:url];
+                if (!data || data.length > UINT32_MAX) {
+                    if (error) *error = BridgeError(61, @"Bundled StressWatch compatibility payload is missing");
+                    return NO;
+                }
+                unsigned char hash[CC_SHA256_DIGEST_LENGTH];
+                CC_SHA256(data.bytes, (CC_LONG)data.length, hash);
+                NSMutableString *hex = [NSMutableString string];
+                for (NSUInteger i = 0; i < sizeof(hash); ++i) [hex appendFormat:@"%02x", hash[i]];
+                if (![hex isEqual:identity[@"sha256"][url.lastPathComponent]]) {
+                    if (error) *error = BridgeError(61, @"Bundled StressWatch compatibility checksum mismatch");
+                    return NO;
+                }
+            }
+        }
+        // Keep originals in a private temporary directory until every operation
+        // succeeds. Roll back on failure, including the old diagnostic candidate.
+        NSString *backup = [NSTemporaryDirectory() stringByAppendingPathComponent:[@"WFStress-" stringByAppendingString:NSUUID.UUID.UUIDString]];
+        if (![fm createDirectoryAtPath:backup withIntermediateDirectories:NO attributes:@{NSFilePosixPermissions: @0700} error:error]) return NO;
+        NSMutableArray<NSString *> *existing = [NSMutableArray array];
+        for (NSString *path in paths) if ([fm fileExistsAtPath:path]) {
+            if (!RunRootCommand(@"/bin/cp", @[@"-p", path, [backup stringByAppendingPathComponent:path.lastPathComponent]], 61, @"Unable to back up StressWatch compatibility", error)) {
+                [fm removeItemAtPath:backup error:nil];
+                return NO;
+            }
+            [existing addObject:path];
+        }
+        BOOL success = YES;
+        // Remove filters first: future launches cannot load a half-installed pair.
+        for (NSString *path in paths) if ([path.pathExtension isEqual:@"plist"] &&
+            !RemoveItemAsRoot([NSURL fileURLWithPath:path], 61, @"Unable to disable StressWatch filter", error)) { success = NO; break; }
+        if (success && enabled) {
+            NSString *newLibrary = paths[1], *newFilter = paths[0];
+            success = RunRootCommand(@"/bin/cp", @[library.path, newLibrary], 61, @"Unable to install StressWatch compatibility", error) &&
+                RunRootCommand(@"/usr/sbin/chown", @[@"root:wheel", newLibrary], 61, @"Unable to set StressWatch owner", error) &&
+                RunRootCommand(@"/usr/bin/chmod", @[@"0755", newLibrary], 61, @"Unable to set StressWatch mode", error) &&
+                RunRootCommand(@"/bin/cp", @[filter.path, newFilter], 61, @"Unable to enable StressWatch filter", error) &&
+                RunRootCommand(@"/usr/sbin/chown", @[@"root:wheel", newFilter], 61, @"Unable to set StressWatch filter owner", error) &&
+                RunRootCommand(@"/usr/bin/chmod", @[@"0644", newFilter], 61, @"Unable to set StressWatch filter mode", error);
+        }
+        if (success) for (NSUInteger i = enabled ? 2 : 0; i < paths.count; ++i) {
+            if (!RemoveItemAsRoot([NSURL fileURLWithPath:paths[i]], 61, @"Unable to remove old StressWatch compatibility", error)) { success = NO; break; }
+        }
+        if (!success) {
+            BOOL restored = YES;
+            for (NSString *path in paths) if ([path.pathExtension isEqual:@"plist"])
+                restored &= RemoveItemAsRoot([NSURL fileURLWithPath:path], 61, @"Unable to roll back filter", nil);
+            // Libraries before filters on restore as well.
+            for (NSString *ext in @[@"dylib", @"plist"]) {
+                if ([ext isEqual:@"plist"] && !restored) break;
+                for (NSString *path in paths) if ([path.pathExtension isEqual:ext]) {
+                    if ([existing containsObject:path]) restored &= RunRootCommand(@"/bin/cp", @[@"-p", [backup stringByAppendingPathComponent:path.lastPathComponent], path], 61, @"Unable to restore StressWatch compatibility", nil);
+                    else restored &= RemoveItemAsRoot([NSURL fileURLWithPath:path], 61, @"Unable to remove incomplete StressWatch compatibility", nil);
+                }
+            }
+            if (!restored && error) *error = BridgeError(61, @"StressWatch compatibility update failed; rollback incomplete. Keep StressWatch closed and retain the temporary backup.");
+            if (restored) [fm removeItemAtPath:backup error:nil];
+            return NO;
+        }
+        [fm removeItemAtPath:backup error:nil];
+        return YES;
+    }
 }
 
 + (UIImage *)pluginIconForScopeIdentifier:(NSString *)scopeIdentifier {

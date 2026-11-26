@@ -23,6 +23,7 @@ static NSString *const kProjectionMarker = @"projection";
 static NSString *const kAcceptMarker = @"accept";
 static NSString *const kMarkerPrefix = @"WFHS-ENABLE-V1";
 static NSString *const kHealthdService = @"system/com.apple.healthd";
+static NSString *const kStressWatchEnabled = @"StressWatchCompatibilityEnabled";
 
 static NSString *MarkerPath(NSString *name) {
     return [kMarkerDirectory stringByAppendingPathComponent:name];
@@ -64,6 +65,18 @@ static NSString *StatusString(WFPluginConfigurationContext *context, NSString *k
 
 @implementation HealthSupportPluginConfiguration
 
++ (NSDictionary<NSString *, id> *)normalizedConfiguration:(NSDictionary<NSString *, id> *)configuration context:(WFPluginConfigurationContext *)context {
+    (void)context;
+    id value = configuration[kStressWatchEnabled];
+    return @{kStressWatchEnabled: @([value isKindOfClass:NSNumber.class] && [value boolValue])};
+}
+
++ (BOOL)didSaveConfigurationWithContext:(WFPluginConfigurationContext *)context error:(NSError **)error {
+    BOOL enabled = [context.pluginConfiguration[kStressWatchEnabled] boolValue];
+    // This action never installs/removes the healthd plugin or restarts services.
+    return [WFPluginBridge setHealthSupportStressWatchEnabled:enabled error:error];
+}
+
 + (BOOL)pluginIsEnabledWithIdentifier:(NSString *)pluginIdentifier pluginInfo:(NSDictionary<NSString *, id> *)pluginInfo {
     (void)pluginIdentifier;
     (void)pluginInfo;
@@ -99,6 +112,8 @@ static NSString *StatusString(WFPluginConfigurationContext *context, NSString *k
     NSString *guard = StatusString(context, MarkerExists(kProjectionMarker) ? @"status.projection.on" : @"status.projection.off", @"");
     return @{
         @"title": context.pluginTitle,
+        @"savedMessage": StatusString(context, @"stress.saved", @""),
+        @"requiresSave": @([WFPluginBridge healthSupportStressWatchNeedsMigration]),
         @"sections": @[
             @{
                 @"title": StatusString(context, @"status.accept.title", @""),
@@ -109,6 +124,17 @@ static NSString *StatusString(WFPluginConfigurationContext *context, NSString *k
                 @"title": StatusString(context, @"status.projection.title", @""),
                 @"footer": guard,
                 @"controls": @[],
+            },
+            @{
+                @"title": StatusString(context, @"stress.section", @""),
+                @"footer": StatusString(context, [WFPluginBridge healthSupportStressWatchNeedsMigration] ? @"stress.migrate" : ([WFPluginBridge healthSupportStressWatchEnabled] ? @"stress.installed" : @"stress.disabled"), @""),
+                @"controls": @[@{
+                    @"type": @"toggle",
+                    @"key": kStressWatchEnabled,
+                    @"title": StatusString(context, @"stress.title", @""),
+                    @"detail": StatusString(context, @"stress.detail", @""),
+                    @"defaultValue": @([WFPluginBridge healthSupportStressWatchEnabled]),
+                }],
             },
         ],
     };

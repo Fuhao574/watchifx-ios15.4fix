@@ -6,3 +6,10 @@
 "plugin.HealthSupport.status.projection.title" = "已接收数据的保护";
 "plugin.HealthSupport.status.projection.on" = "保留中。已经写入健康库的睡眠阶段要靠它，健康 App 才能正常算出睡眠摘要；删除本修复后它也会留在后台。";
 "plugin.HealthSupport.status.projection.off" = "未启用。还没有任何睡眠阶段被写入健康库。";
+"plugin.HealthSupport.stress.section" = "第三方 App 兼容";
+"plugin.HealthSupport.stress.title" = "StressWatch 睡眠阶段兼容";
+"plugin.HealthSupport.stress.detail" = "仅支持已验证的 StressWatch 版本，让真实核心、深睡和 REM 阶段正常解码和显示。无测试日志、查询观察或后台轮询，不解锁 Pro。切换后请保存，并彻底退出再打开 StressWatch。";
+"plugin.HealthSupport.stress.installed" = "兼容组件已安装。已运行的 StressWatch 要重新打开才会应用更改；不重启健康服务。";
+"plugin.HealthSupport.stress.disabled" = "兼容组件未启用。关闭只影响 StressWatch，不影响健康库阶段接收、已有数据保护或睡眠配置同步。";
+"plugin.HealthSupport.stress.saved" = "设置已保存。若切换了 StressWatch 兼容，请彻底退出并重新打开 StressWatch。";
+"plugin.HealthSupport.stress.migrate" = "检测到已启用的独立测试版。保持开关开启并点“保存”，即可替换为低开销版；迁移后彻底退出并重开 StressWatch。";
