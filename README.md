@@ -67,7 +67,7 @@
 - Media Sync Support
 - Maps Support
 
-### 尚未实现
+### Health Support（限定设备验证）
 
 - Health Support（已纳入 WatchFix 插件构建；默认不启用）
 
@@ -97,6 +97,59 @@
 默认构建已包含睡眠模块，但运行清单保持 `enabledForDevice=false`，不是通用设备可执行发行包。
 维护者可按模块文档显式生成 RootHide 品牌绑定的测试候选；不要手改清单绕过设备绑定。
 构建不等于安装或开始同步，`make package` 不会连接手机。
+
+### 构建注意事项（2026-11-26 真机回归）
+
+本次 `2.0.12~sleepsync3-1+debug` 已由用户确认 WatchFix 能打开、睡眠配置同步页面
+不再显示“后端不可用”。这不是重新执行一次睡眠配置同步的验收，也不代表 StressWatch 睡眠读取已修复。
+
+1. **保持 App 非容器化 entitlement。** `App/Entitlements.xml` 中
+   `com.apple.private.security.container-required` 必须只出现一次，值为 `false`，与
+   `com.apple.private.security.no-container=true` 一致。此前去除重复键时错误地保留了
+   `container-required=true`，新 App 注册成容器化后无法正常启动；恢复为 `false` 后用户确认能打开。
+   不要为了让签名器通过而随意删权限或保留相反的重复键。
+2. **签名器必须实际可执行。** 可用 `WATCHFIX_LDID=/absolute/path/to/ldid` 指定本机签名器；
+   本轮 Homebrew 的 ldid 因依赖旧 libplist 失效，采用本机独立副本修正依赖后，先给这个 macOS
+   工具副本重新签名，再用于 iOS 产物签名。不要修改 Homebrew/系统库来兜底。
+   Apple `codesign` 与 ldid 的参数不同（`--entitlements` / `-S`），不能直接互换。
+   签名验证成功不等于设备可启动；此前仅凭闪退就把原因归于 ad-hoc 签名并不充分。
+3. **SleepSync 普通构建默认不可用，这是安全门。** 若要保留已验证设备上的睡眠配置同步，
+   必须显式生成品牌绑定包，不能漏掉下面两个参数，也不能安装后手改清单：
+
+   ```sh
+   # 设备品牌值由维护者另行只读确认，不写死进公开源码。
+   export WATCHFIX_SLEEP_SYNC_BRAND='<目标设备的十六进制 jbrand>'
+   export WATCHFIX_SLEEP_SYNC_TEST_CANDIDATE=1
+   export THEOS='/absolute/path/to/theos'
+   export WATCHFIX_LDID='/absolute/path/to/working/ldid'
+   make package FINALPACKAGE=0
+   ```
+
+   打包后检查 `SleepSyncRuntime/module-info.plist` 的 `enabledForDevice=true`、
+   `brandHex` 与目标设备一致，核对 `payload.sha256` / `postload.sha256`。
+   **设备绑定包不可当作通用发行包**；其他品牌的设备需要重新构建，不能绕过绑定校验。
+4. **私有 Runtime 的构建路径必须与 staging 一致。** SleepSync 的 Focus/Identity 递归构建
+   使用组件各自的 `.theos/obj`；不要拿 `.theos/obj/debug` 或旧目录里的同名二进制顶替。
+   缺少签名、过期源码或 postload 哈希不通过时停止打包，不删除校验。
+5. **HealthSupport 只生成 arm64e 单切片。** `Plugins/HealthSupport/Makefile` 独立固定
+   `ARCHS=arm64e`，不能随主 App 改回 fat。普通打包只将插件放入 App 内；不要随包自动启用
+   healthd hook。已接收阶段后须保留 projection 读取保护，停接收不等于删除全部保护文件。
+6. **核对实际生成包，不能只看文件名。** Theos 可能递增文件名而复用旧 control；以构建日志中
+   的确切文件为准，解包核对 Debian `Version`、App `CFBundleShortVersionString`、签名及哈希。
+   包内不得包含 StressWatch 观察器、客户端兼容实验、设备日志、SSH 凭据或私有诊断。
+7. **覆盖安装与桌面注册分别验收。** 用 `dpkg -i <已核验的.deb>` 覆盖安装，不先卸载或删数据。
+   本轮旧隐藏备份 `.WatchFix-module-test-original.app` 与新 App 使用相同 bundle ID，曾在安装后
+   重新抢占桌面注册；因此 dpkg 成功不等于点击图标运行新版本。检查注册的实际路径和运行版本；
+   必要时仅注销旧备份的注册，再定向注册新 App，保留备份文件。不使用全量缓存清理/respring
+   替代检查，不重启 healthd 或重新执行同步来验收 App 升级。
+
+### 本次可用测试包
+
+- Debian Version：`2.0.12~sleepsync3-1+debug`，RootHide / `iphoneos-arm64e`。
+- SHA256：`cb0d023b92c3593735ecc90e478b3d67a9d77eff7be260b0c0547f4e1a96f104`。
+- 这是**单设备品牌绑定的工程测试包**，不是所有 iOS 15.4 设备都可用的通用正式版。
+- 健康 App 睡眠显示已获用户反馈；StressWatch 仍无数据。仅更新 WatchFix 包不替代 HealthSupport
+  Runtime 的独立加载和功能验收。本轮升级没有重启 healthd，也没有发起睡眠配置同步。
 
 ## Credits
 

@@ -26,7 +26,7 @@
     <key>com.apple.private.coreservices.canmaplsdatabase</key>
     <true/>
     <key>com.apple.private.security.container-required</key>
-    <true/>
+    <false/>
     <key>com.apple.security.exception.files.absolute-path.read-only</key>
     <array>
         <string>/private/var/MobileAsset/AssetsV2/com_apple_MobileAsset_BridgeAssets/</string>

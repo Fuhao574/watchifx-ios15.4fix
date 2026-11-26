@@ -39,7 +39,7 @@ export WATCHFIX_PLUGIN_PREFIX = WatchFix_
 export WATCHFIX_PLUGIN_CONFIG_FILE = $(CURDIR)/Utils/PluginConfig.xm
 export WATCHFIX_UTILS_FILES = $(filter-out $(WATCHFIX_PLUGIN_CONFIG_FILE),$(wildcard $(CURDIR)/Utils/*.xm))
 export WATCHFIX_UTILS_CFLAGS = -I$(CURDIR)/Utils
-WATCHFIX_LDID := $(firstword $(wildcard /usr/local/bin/ldid /opt/homebrew/bin/ldid))
+WATCHFIX_LDID ?= $(firstword $(wildcard /usr/local/bin/ldid /opt/homebrew/bin/ldid))
 ifeq ($(origin TARGET_CODESIGN),undefined)
 ifneq ($(WATCHFIX_LDID),)
 export TARGET_CODESIGN = $(WATCHFIX_LDID)
